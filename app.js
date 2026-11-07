@@ -259,6 +259,40 @@
     return added.map(task => task.id);
   }
 
+  function normalizeLogEntry(entry) {
+    if (!entry || typeof entry !== "object") return null;
+    const date = String(entry.date || "").trim();
+    const text = String(entry.text || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !text) return null;
+    return {
+      id: String(entry.id || `L-${(globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`).toUpperCase()}`),
+      date,
+      text: text.slice(0, 2000)
+    };
+  }
+
+  function normalizeLogList(list) {
+    if (!Array.isArray(list)) return [];
+    return list.map(normalizeLogEntry).filter(Boolean).sort((a, b) => {
+      if (a.date === b.date) return String(b.id).localeCompare(String(a.id));
+      return a.date < b.date ? 1 : -1;
+    });
+  }
+
+  function todayIsoDate() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  function formatZhDate(iso) {
+    const match = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return iso || "";
+    return `${Number(match[1])}年${Number(match[2])}月${Number(match[3])}日`;
+  }
+
   function normalizeTask(task) {
     const pipelineId = String(task.pipeline || "").trim() || "client";
     const status = STATUSES.some(item => item.id === task.status) ? task.status : "todo";
@@ -290,6 +324,8 @@
       acceptance: String(task.acceptance || ""),
       dependencies: String(task.dependencies || ""),
       due: String(task.due || ""),
+      progressLog: normalizeLogList(task.progressLog),
+      blockerLog: normalizeLogList(task.blockerLog),
       custom: Boolean(task.custom)
     };
   }
@@ -475,6 +511,18 @@
         toast("已恢复默认三档目标");
       });
     }
+    const toggleEdit = $("#toggle-task-edit");
+    if (toggleEdit) toggleEdit.addEventListener("click", toggleTaskEditPanel);
+    const progressAdd = $("#progress-log-add");
+    if (progressAdd) progressAdd.addEventListener("click", () => addJournalEntry("progress"));
+    const blockerAdd = $("#blocker-log-add");
+    if (blockerAdd) blockerAdd.addEventListener("click", () => addJournalEntry("blocker"));
+    const journalStepSave = $("#journal-step-save");
+    if (journalStepSave) journalStepSave.addEventListener("click", saveJournalStepQuick);
+    const progressList = $("#progress-log-list");
+    if (progressList) progressList.addEventListener("click", event => handleJournalListClick(event, "progress"));
+    const blockerList = $("#blocker-log-list");
+    if (blockerList) blockerList.addEventListener("click", event => handleJournalListClick(event, "blocker"));
     $("#close-dialog").addEventListener("click", closeTaskDialog);
     $("#cancel-dialog").addEventListener("click", closeTaskDialog);
     $("#task-dialog").addEventListener("click", event => {
@@ -810,15 +858,196 @@
       </article>`).join("");
   }
 
+  function syncJournalStepOptions() {
+    const journalStep = $("#journal-step");
+    const taskStep = $("#task-step");
+    if (!journalStep || !taskStep) return;
+    journalStep.innerHTML = taskStep.innerHTML;
+  }
+
+  function setTaskDialogMode(mode, editOpen = false) {
+    const dialog = $("#task-dialog");
+    dialog.classList.toggle("mode-create", mode === "create");
+    dialog.classList.toggle("mode-journal", mode === "journal");
+    dialog.classList.toggle("edit-open", mode === "journal" && editOpen);
+    const journal = $("#task-journal");
+    const badges = $("#task-journal-badges");
+    const toggle = $("#toggle-task-edit");
+    const saveBtn = $("#task-save-btn");
+    if (journal) journal.hidden = mode !== "journal";
+    if (badges) badges.hidden = mode !== "journal";
+    if (toggle) {
+      toggle.hidden = mode !== "journal";
+      toggle.setAttribute("aria-pressed", mode === "journal" && editOpen ? "true" : "false");
+      toggle.title = editOpen ? "收起编辑" : "编辑任务";
+    }
+    if (saveBtn) saveBtn.textContent = mode === "journal" ? "保存编辑" : "保存任务";
+  }
+
+  function toggleTaskEditPanel() {
+    const dialog = $("#task-dialog");
+    if (!dialog.classList.contains("mode-journal")) return;
+    const next = !dialog.classList.contains("edit-open");
+    dialog.classList.toggle("edit-open", next);
+    const toggle = $("#toggle-task-edit");
+    if (toggle) {
+      toggle.setAttribute("aria-pressed", next ? "true" : "false");
+      toggle.title = next ? "收起编辑" : "编辑任务";
+    }
+    if (next) requestAnimationFrame(() => $("#task-title")?.focus());
+  }
+
+  function renderTaskBadges(task) {
+    const host = $("#task-journal-badges");
+    if (!host || !task) return;
+    const steps = typeof WORKFLOW_STEPS !== "undefined" ? WORKFLOW_STEPS : [];
+    const stepName = steps.find(item => item.id === task.step)?.name || task.step || "定义";
+    const statusName = STATUSES.find(item => item.id === task.status)?.name || task.status;
+    host.innerHTML = `
+      <span class="chip step">${esc(stepName)}</span>
+      <span class="chip status">${esc(statusName)}</span>
+      <span class="chip">${esc(task.priority || "P1")}</span>
+      <span class="chip">${esc(task.phase || "M0")}</span>`;
+  }
+
+  function renderJournalList(kind, entries) {
+    const host = $(kind === "progress" ? "#progress-log-list" : "#blocker-log-list");
+    if (!host) return;
+    if (!entries.length) {
+      host.innerHTML = `<div class="journal-empty">${kind === "progress" ? "还没有进度记录，写一条带日期的说明吧" : "还没有卡点记录"}</div>`;
+      return;
+    }
+    host.innerHTML = entries.map(entry => `
+      <article class="journal-entry" data-entry-id="${esc(entry.id)}">
+        <div class="journal-entry-head">
+          <time class="journal-entry-date" datetime="${esc(entry.date)}">${esc(formatZhDate(entry.date))}</time>
+          <div class="journal-entry-actions">
+            <button type="button" class="text-btn" data-journal-edit="${esc(entry.id)}">改</button>
+            <button type="button" class="text-btn danger" data-journal-delete="${esc(entry.id)}">删</button>
+          </div>
+        </div>
+        <p class="journal-entry-text">${esc(entry.text)}</p>
+      </article>`).join("");
+  }
+
+  function renderTaskJournal(task) {
+    if (!task) return;
+    renderTaskBadges(task);
+    syncJournalStepOptions();
+    if ($("#journal-step")) $("#journal-step").value = task.step || "define";
+    if ($("#journal-step-note")) $("#journal-step-note").value = task.stepNote || "";
+    if ($("#progress-log-date")) $("#progress-log-date").value = todayIsoDate();
+    if ($("#blocker-log-date")) $("#blocker-log-date").value = todayIsoDate();
+    if ($("#progress-log-text")) $("#progress-log-text").value = "";
+    if ($("#blocker-log-text")) $("#blocker-log-text").value = "";
+    renderJournalList("progress", task.progressLog || []);
+    renderJournalList("blocker", task.blockerLog || []);
+  }
+
+  function currentDialogTask() {
+    const id = $("#task-id")?.value || "";
+    return id ? state.tasks.find(item => item.id === id) : null;
+  }
+
+  function persistCurrentTask(task, toastText) {
+    if (!task) return;
+    const normalized = normalizeTask(task);
+    Object.assign(task, normalized);
+    saveTasks({ type: "upsert", task });
+    renderAll();
+    renderTaskJournal(task);
+    if (toastText) toast(toastText);
+  }
+
+  function addJournalEntry(kind) {
+    if (!ensureCanEdit()) return;
+    const task = currentDialogTask();
+    if (!task) return;
+    const dateInput = $(kind === "progress" ? "#progress-log-date" : "#blocker-log-date");
+    const textInput = $(kind === "progress" ? "#progress-log-text" : "#blocker-log-text");
+    const date = (dateInput?.value || todayIsoDate()).trim();
+    const text = (textInput?.value || "").trim();
+    if (!text) {
+      toast(kind === "progress" ? "请填写进度说明" : "请填写卡点说明");
+      textInput?.focus();
+      return;
+    }
+    const entry = normalizeLogEntry({ date, text });
+    if (!entry) {
+      toast("日期或内容无效");
+      return;
+    }
+    const key = kind === "progress" ? "progressLog" : "blockerLog";
+    task[key] = normalizeLogList([...(task[key] || []), entry]);
+    if (textInput) textInput.value = "";
+    if (dateInput) dateInput.value = todayIsoDate();
+    persistCurrentTask(task, kind === "progress" ? "进度已添加" : "卡点已添加");
+  }
+
+  function handleJournalListClick(event, kind) {
+    const editBtn = event.target.closest("[data-journal-edit]");
+    const deleteBtn = event.target.closest("[data-journal-delete]");
+    if (!editBtn && !deleteBtn) return;
+    if (!ensureCanEdit()) return;
+    const task = currentDialogTask();
+    if (!task) return;
+    const key = kind === "progress" ? "progressLog" : "blockerLog";
+    const list = [...(task[key] || [])];
+    if (deleteBtn) {
+      const id = deleteBtn.dataset.journalDelete;
+      if (!window.confirm("确定删除这条记录吗？")) return;
+      task[key] = list.filter(item => item.id !== id);
+      persistCurrentTask(task, "记录已删除");
+      return;
+    }
+    const id = editBtn.dataset.journalEdit;
+    const entry = list.find(item => item.id === id);
+    if (!entry) return;
+    const nextText = window.prompt("修改说明文字", entry.text);
+    if (nextText === null) return;
+    const trimmed = nextText.trim();
+    if (!trimmed) {
+      toast("内容不能为空");
+      return;
+    }
+    const nextDateRaw = window.prompt("修改日期（YYYY-MM-DD）", entry.date);
+    if (nextDateRaw === null) return;
+    const nextDate = nextDateRaw.trim() || entry.date;
+    const updated = normalizeLogEntry({ id: entry.id, date: nextDate, text: trimmed });
+    if (!updated) {
+      toast("日期格式请用 YYYY-MM-DD");
+      return;
+    }
+    task[key] = normalizeLogList(list.map(item => item.id === id ? updated : item));
+    persistCurrentTask(task, "记录已更新");
+  }
+
+  function saveJournalStepQuick() {
+    if (!ensureCanEdit()) return;
+    const task = currentDialogTask();
+    if (!task) return;
+    const step = $("#journal-step")?.value || task.step || "define";
+    const stepNote = ($("#journal-step-note")?.value || "").trim();
+    task.step = step;
+    task.stepNote = stepNote;
+    if ($("#task-step")) $("#task-step").value = step;
+    if ($("#task-step-note")) $("#task-step-note").value = stepNote;
+    if (task.status !== "done" && step === "deliver") {
+      // keep status as-is; deliver step does not force done
+    }
+    persistCurrentTask(task, "步骤已更新");
+  }
+
   function openTaskDialog(id = "") {
     if (!id && !ensureCanEdit()) return;
     const task = id ? state.tasks.find(item => item.id === id) : null;
     if (id && !task) return;
     $("#task-form").reset();
     fillPipelineSelects(task?.pipeline || (state.pipeline !== "all" ? state.pipeline : "client"));
+    syncJournalStepOptions();
     $("#task-id").value = task?.id || "";
-    $("#dialog-kicker").textContent = task ? `EDIT TASK / ${task.id}` : "NEW TASK";
-    $("#dialog-title").textContent = task ? "编辑开发任务" : "新建开发任务";
+    $("#dialog-kicker").textContent = task ? `TASK / ${task.id}` : "NEW TASK";
+    $("#dialog-title").textContent = task ? task.title : "新建开发任务";
     $("#task-title").value = task?.title || "";
     $("#task-pipeline").value = task?.pipeline || (state.pipeline !== "all" && getAllPipelines()[state.pipeline] ? state.pipeline : "client");
     $("#task-phase").value = task?.phase || (state.phase !== "all" ? state.phase : "M0");
@@ -838,12 +1067,22 @@
     $("#new-pipeline-color").value = "#6b8f71";
     toggleNewPipelineFields();
     $("#delete-task").hidden = !task;
-    $("#task-dialog").showModal();
-    requestAnimationFrame(() => $("#task-title").focus());
+    if (task) {
+      setTaskDialogMode("journal", false);
+      renderTaskJournal(task);
+      $("#task-dialog").showModal();
+      requestAnimationFrame(() => $("#progress-log-text")?.focus());
+    } else {
+      setTaskDialogMode("create", false);
+      $("#task-dialog").showModal();
+      requestAnimationFrame(() => $("#task-title").focus());
+    }
   }
 
   function closeTaskDialog() {
-    $("#task-dialog").close();
+    const dialog = $("#task-dialog");
+    dialog.classList.remove("mode-journal", "mode-create", "edit-open");
+    dialog.close();
   }
 
 
@@ -897,6 +1136,8 @@
       deliverable: $("#task-deliverable").value.trim(),
       acceptance: $("#task-acceptance").value.trim(),
       dependencies: $("#task-dependencies").value.trim(),
+      progressLog: existing?.progressLog || [],
+      blockerLog: existing?.blockerLog || [],
       custom: existing?.custom ?? true
     });
     if (!nextTask.title) return;
@@ -904,6 +1145,13 @@
     else state.tasks.push(nextTask);
     saveTasks({ type: "upsert", task: existing || nextTask });
     renderAll();
+    if (existing && $("#task-dialog").classList.contains("mode-journal")) {
+      $("#dialog-title").textContent = existing.title;
+      renderTaskJournal(existing);
+      setTaskDialogMode("journal", $("#task-dialog").classList.contains("edit-open"));
+      toast("任务已更新");
+      return;
+    }
     closeTaskDialog();
     toast(existing ? "任务已更新" : "新任务已添加");
   }

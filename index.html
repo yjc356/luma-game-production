@@ -26,6 +26,7 @@
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4.5L19 9.5 14.5 5 4 15.5V20z"/><path d="M13.5 6.5 17.5 10.5"/></symbol>
   </svg>
 
   <div class="app-shell">
@@ -152,35 +153,85 @@
 
   <dialog id="task-dialog" class="task-dialog">
     <form id="task-form">
-      <div class="dialog-header"><div><span class="section-kicker" id="dialog-kicker">NEW TASK</span><h2 id="dialog-title">新建开发任务</h2></div><button type="button" class="icon-btn" id="close-dialog" aria-label="关闭"><svg><use href="#i-close"/></svg></button></div>
-      <div class="dialog-body">
-        <input type="hidden" id="task-id">
-        <label class="field full"><span>任务名称 <b>*</b></span><input id="task-title" required maxlength="80" placeholder="例如：建立角色基础移动动画"></label>
-        <div class="form-grid">
-          <label class="field"><span>所属管线</span><select id="task-pipeline"></select></label>
-          <div id="new-pipeline-fields" class="new-pipeline-fields full" hidden>
-            <div class="form-grid">
-              <label class="field"><span>管线名称 <b>*</b></span><input id="new-pipeline-name" maxlength="24" placeholder="例如：音频管线"></label>
-              <label class="field"><span>简称</span><input id="new-pipeline-short" maxlength="2" placeholder="音"></label>
-              <label class="field"><span>英文标识</span><input id="new-pipeline-en" maxlength="24" placeholder="AUDIO"></label>
-              <label class="field"><span>颜色</span><input id="new-pipeline-color" type="color" value="#6b8f71"></label>
-            </div>
-            <p class="field-hint">保存任务时会创建该管线，并写入本地；筛选与卡片会立即出现。</p>
-          </div>
-          <label class="field"><span>阶段标签</span><select id="task-phase"></select></label>
-          <label class="field"><span>优先级</span><select id="task-priority"><option value="P0">P0 · 必须</option><option value="P1">P1 · 重要</option><option value="P2">P2 · 增强</option></select></label>
-          <label class="field"><span>当前状态</span><select id="task-status"></select></label>
-          <label class="field"><span>做到哪一步</span><select id="task-step"></select></label>
-          <label class="field"><span>预估工作量（人日）</span><input id="task-estimate" type="number" min="0" max="999" step="0.5" value="1"></label>
-          <label class="field"><span>计划完成日期</span><input id="task-due" type="date"></label>
+      <div class="dialog-header">
+        <div class="dialog-heading">
+          <span class="section-kicker" id="dialog-kicker">NEW TASK</span>
+          <h2 id="dialog-title">新建开发任务</h2>
+          <div id="task-journal-badges" class="task-journal-badges" hidden></div>
         </div>
-        <label class="field full"><span>步骤备注（可选）</span><input id="task-step-note" maxlength="80" placeholder="例如：正在压测 2060 中档反射；等材质球合入"></label>
-        <label class="field full"><span>功能说明</span><textarea id="task-description" rows="3" placeholder="要做什么，为什么需要它"></textarea></label>
-        <label class="field full"><span>交付物</span><textarea id="task-deliverable" rows="2" placeholder="例如：可复用蓝图、插件模块、测试关卡"></textarea></label>
-        <label class="field full"><span>验收标准</span><textarea id="task-acceptance" rows="3" placeholder="用可以实际验证的条件描述完成状态"></textarea></label>
-        <label class="field full"><span>前置依赖 / 备注</span><input id="task-dependencies" maxlength="160" placeholder="例如：C-04；需要目标平台性能数据"></label>
+        <div class="dialog-header-actions">
+          <button type="button" class="icon-btn edit-toggle-btn" id="toggle-task-edit" hidden title="编辑任务" aria-label="编辑任务" aria-pressed="false"><svg><use href="#i-edit"/></svg></button>
+          <button type="button" class="icon-btn" id="close-dialog" aria-label="关闭"><svg><use href="#i-close"/></svg></button>
+        </div>
       </div>
-      <div class="dialog-footer"><button type="button" class="danger-btn" id="delete-task" hidden><svg><use href="#i-trash"/></svg>删除</button><span></span><button type="button" class="secondary-btn" id="cancel-dialog">取消</button><button type="submit" class="primary-btn">保存任务</button></div>
+      <div class="dialog-body task-dialog-body">
+        <input type="hidden" id="task-id">
+        <aside id="task-meta-panel" class="task-meta-panel">
+          <div class="meta-panel-title">编辑任务</div>
+          <label class="field full"><span>任务名称 <b>*</b></span><input id="task-title" required maxlength="80" placeholder="例如：建立角色基础移动动画"></label>
+          <div class="form-grid meta-form-grid">
+            <label class="field"><span>所属管线</span><select id="task-pipeline"></select></label>
+            <div id="new-pipeline-fields" class="new-pipeline-fields full" hidden>
+              <div class="form-grid">
+                <label class="field"><span>管线名称 <b>*</b></span><input id="new-pipeline-name" maxlength="24" placeholder="例如：音频管线"></label>
+                <label class="field"><span>简称</span><input id="new-pipeline-short" maxlength="2" placeholder="音"></label>
+                <label class="field"><span>英文标识</span><input id="new-pipeline-en" maxlength="24" placeholder="AUDIO"></label>
+                <label class="field"><span>颜色</span><input id="new-pipeline-color" type="color" value="#6b8f71"></label>
+              </div>
+              <p class="field-hint">保存任务时会创建该管线，并写入本地；筛选与卡片会立即出现。</p>
+            </div>
+            <label class="field"><span>阶段标签</span><select id="task-phase"></select></label>
+            <label class="field"><span>优先级</span><select id="task-priority"><option value="P0">P0 · 必须</option><option value="P1">P1 · 重要</option><option value="P2">P2 · 增强</option></select></label>
+            <label class="field"><span>当前状态</span><select id="task-status"></select></label>
+            <label class="field"><span>做到哪一步</span><select id="task-step"></select></label>
+            <label class="field"><span>预估工作量（人日）</span><input id="task-estimate" type="number" min="0" max="999" step="0.5" value="1"></label>
+            <label class="field"><span>计划完成日期</span><input id="task-due" type="date"></label>
+          </div>
+          <label class="field full"><span>步骤备注（可选）</span><input id="task-step-note" maxlength="80" placeholder="例如：正在压测 2060 中档反射；等材质球合入"></label>
+          <label class="field full"><span>功能说明</span><textarea id="task-description" rows="3" placeholder="要做什么，为什么需要它"></textarea></label>
+          <label class="field full"><span>交付物</span><textarea id="task-deliverable" rows="2" placeholder="例如：可复用蓝图、插件模块、测试关卡"></textarea></label>
+          <label class="field full"><span>验收标准</span><textarea id="task-acceptance" rows="3" placeholder="用可以实际验证的条件描述完成状态"></textarea></label>
+          <label class="field full"><span>前置依赖 / 备注</span><input id="task-dependencies" maxlength="160" placeholder="例如：C-04；需要目标平台性能数据"></label>
+        </aside>
+        <div id="task-journal" class="task-journal" hidden>
+          <div class="journal-quickbar">
+            <label class="field inline-field"><span>做到哪一步</span><select id="journal-step"></select></label>
+            <label class="field inline-field grow"><span>当前焦点</span><input id="journal-step-note" maxlength="80" placeholder="一句话说明现在卡在哪 / 在做什么"></label>
+            <button type="button" class="secondary-btn" id="journal-step-save">更新步骤</button>
+          </div>
+          <div class="journal-columns">
+            <section class="journal-section" data-kind="progress">
+              <header class="journal-section-head">
+                <div>
+                  <h3>任务进度</h3>
+                  <p>写下带日期的制作说明，新的在上</p>
+                </div>
+              </header>
+              <div class="journal-composer">
+                <input type="date" id="progress-log-date" aria-label="进度日期">
+                <textarea id="progress-log-text" rows="2" placeholder="例如：我完成了 TOD 的初版制作，还有……"></textarea>
+                <button type="button" class="secondary-btn" id="progress-log-add">添加进度</button>
+              </div>
+              <div id="progress-log-list" class="journal-list"></div>
+            </section>
+            <section class="journal-section" data-kind="blocker">
+              <header class="journal-section-head">
+                <div>
+                  <h3>任务卡点</h3>
+                  <p>记录阻塞、风险与待确认事项</p>
+                </div>
+              </header>
+              <div class="journal-composer">
+                <input type="date" id="blocker-log-date" aria-label="卡点日期">
+                <textarea id="blocker-log-text" rows="2" placeholder="例如：等材质球合入；中档反射超预算……"></textarea>
+                <button type="button" class="secondary-btn" id="blocker-log-add">添加卡点</button>
+              </div>
+              <div id="blocker-log-list" class="journal-list"></div>
+            </section>
+          </div>
+        </div>
+      </div>
+      <div class="dialog-footer"><button type="button" class="danger-btn" id="delete-task" hidden><svg><use href="#i-trash"/></svg>删除</button><span></span><button type="button" class="secondary-btn" id="cancel-dialog">取消</button><button type="submit" class="primary-btn" id="task-save-btn">保存任务</button></div>
     </form>
   </dialog>
   <dialog id="cloud-dialog" class="task-dialog cloud-dialog">
