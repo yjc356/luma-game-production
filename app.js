@@ -4,12 +4,15 @@
   const STORAGE_KEY = "luma-game-production-v1";
   const PIPELINES_KEY = "luma-pipelines";
   const PITFALLS_KEY = "luma-pitfalls";
+  const RENDER_TIERS_KEY = "luma-render-tiers";
   const NEW_PIPELINE_VALUE = "__new__";
 
   const state = {
     tasks: [],
     customPipelines: {},
     pitfalls: [],
+    renderTiers: [],
+    editingBudgets: false,
     view: "dashboard",
     pipeline: "all",
     phase: "all",
@@ -40,6 +43,61 @@
     return all[id] || { name: id || "未知管线", en: "CUSTOM", short: "?", color: "#8a948c", description: "自定义或已归档管线" };
   }
 
+
+  function stepOf(id) {
+    const steps = typeof WORKFLOW_STEPS !== "undefined" ? WORKFLOW_STEPS : [];
+    return steps.find(step => step.id === id) || steps[0] || { id: "define", name: "定义" };
+  }
+
+  function stepIndex(id) {
+    const steps = typeof WORKFLOW_STEPS !== "undefined" ? WORKFLOW_STEPS : [];
+    const index = steps.findIndex(step => step.id === id);
+    return index < 0 ? 0 : index;
+  }
+
+  function inferStepFromStatus(status, current) {
+    if (status === "done") return "deliver";
+    if (status === "review") return "verify";
+    if (status === "todo") return current && current !== "deliver" ? current : "define";
+    if (status === "doing" && (!current || current === "define" || current === "deliver")) return "implement";
+    return current || "implement";
+  }
+
+  function loadRenderTiers() {
+    const defaults = (typeof PRODUCTION_BUDGETS !== "undefined" ? PRODUCTION_BUDGETS : []).map(item => ({ ...item }));
+    try {
+      const saved = JSON.parse(localStorage.getItem(RENDER_TIERS_KEY) || "null");
+      if (Array.isArray(saved) && saved.length) {
+        const byId = Object.fromEntries(saved.map(item => [item.id, item]));
+        state.renderTiers = defaults.map(seed => normalizeRenderTier({ ...seed, ...(byId[seed.id] || {}) }));
+        // keep any extra custom tiers user added
+        saved.forEach(item => {
+          if (!defaults.some(seed => seed.id === item.id)) state.renderTiers.push(normalizeRenderTier(item));
+        });
+        return;
+      }
+    } catch (error) {
+      console.warn("无法读取三档渲染目标", error);
+    }
+    state.renderTiers = defaults.map(item => normalizeRenderTier(item));
+    persistRenderTiers();
+  }
+
+  function persistRenderTiers() {
+    localStorage.setItem(RENDER_TIERS_KEY, JSON.stringify(state.renderTiers));
+  }
+
+  function normalizeRenderTier(tier = {}) {
+    const id = String(tier.id || "custom").slice(0, 24) || "custom";
+    return {
+      id,
+      name: String(tier.name || id).slice(0, 24),
+      target: String(tier.target || "").slice(0, 80),
+      gi: String(tier.gi || "").slice(0, 80),
+      note: String(tier.note || "").slice(0, 160)
+    };
+  }
+
   function pipelineOrder() {
     const builtin = Object.keys(PIPELINES);
     const custom = Object.keys(state.customPipelines).filter(id => !PIPELINES[id]);
@@ -49,6 +107,7 @@
   function init() {
     loadCustomPipelines();
     loadPitfalls();
+    loadRenderTiers();
     loadTasks();
     const seeded = mergeSeedTasks({ persist: true, cloud: false });
     fillFormOptions();
@@ -70,7 +129,7 @@
   function applyCloudTasks(tasks) {
     const backupKey = `${STORAGE_KEY}-before-cloud`;
     if (!localStorage.getItem(backupKey)) {
-      localStorage.setItem(backupKey, JSON.stringify({ version: 2, tasks: state.tasks, pipelines: state.customPipelines, pitfalls: state.pitfalls }));
+      localStorage.setItem(backupKey, JSON.stringify({ version: 3, tasks: state.tasks, pipelines: state.customPipelines, pitfalls: state.pitfalls, renderTiers: state.renderTiers }));
     }
     state.tasks = tasks.map(normalizeTask).filter(task => task.id && task.title);
     persistLocalTasks();
@@ -202,14 +261,29 @@
 
   function normalizeTask(task) {
     const pipelineId = String(task.pipeline || "").trim() || "client";
+    const status = STATUSES.some(item => item.id === task.status) ? task.status : "todo";
+    const steps = typeof WORKFLOW_STEPS !== "undefined" ? WORKFLOW_STEPS : [];
+    let step = String(task.step || "").trim();
+    if (!steps.some(item => item.id === step)) {
+      // migrate old percent progress into a step label once
+      const legacy = Number(task.progress);
+      if (Number.isFinite(legacy) && legacy >= 100) step = "deliver";
+      else if (Number.isFinite(legacy) && legacy >= 85) step = "verify";
+      else if (Number.isFinite(legacy) && legacy >= 70) step = "integrate";
+      else if (Number.isFinite(legacy) && legacy >= 45) step = "implement";
+      else if (Number.isFinite(legacy) && legacy >= 20) step = "research";
+      else step = inferStepFromStatus(status, "define");
+    }
+    const note = String(task.stepNote || task.progressNote || "").slice(0, 80);
     return {
       id: String(task.id || ""),
       title: String(task.title || ""),
       pipeline: pipelineId,
       phase: PHASES.some(phase => phase.id === task.phase) ? task.phase : "M0",
       priority: ["P0", "P1", "P2"].includes(task.priority) ? task.priority : "P1",
-      status: STATUSES.some(status => status.id === task.status) ? task.status : "todo",
-      progress: Math.min(100, Math.max(0, Number(task.progress) || 0)),
+      status,
+      step,
+      stepNote: note,
       estimate: Math.max(0, Number(task.estimate) || 0),
       description: String(task.description || ""),
       deliverable: String(task.deliverable || ""),
@@ -256,6 +330,11 @@
     fillPipelineSelects();
     $("#task-phase").innerHTML = PHASES.map(phase => `<option value="${phase.id}">${phase.id} · ${phase.name}</option>`).join("");
     $("#task-status").innerHTML = STATUSES.map(status => `<option value="${status.id}">${status.name}</option>`).join("");
+    const stepSelect = $("#task-step");
+    if (stepSelect) {
+      const steps = typeof WORKFLOW_STEPS !== "undefined" ? WORKFLOW_STEPS : [];
+      stepSelect.innerHTML = steps.map(step => `<option value="${step.id}">${step.name}</option>`).join("");
+    }
     const phaseFilter = $("#phase-filter");
     const existing = new Set([...phaseFilter.options].map(option => option.value));
     PHASES.forEach(phase => {
@@ -349,17 +428,53 @@
     });
     $("#task-form").addEventListener("submit", saveTaskFromForm);
     $("#task-pipeline").addEventListener("change", toggleNewPipelineFields);
-    $("#task-progress").addEventListener("input", event => {
-      $("#progress-output").textContent = `${event.target.value}%`;
-      const status = $("#task-status");
-      if (Number(event.target.value) === 100) status.value = "done";
-      else if (Number(event.target.value) > 0 && status.value === "todo") status.value = "doing";
-      else if (status.value === "done") status.value = "doing";
-    });
+    const stepSelect = $("#task-step");
+    if (stepSelect) {
+      stepSelect.addEventListener("change", event => {
+        const status = $("#task-status");
+        if (event.target.value === "deliver") status.value = "done";
+        else if (event.target.value === "verify" && status.value === "todo") status.value = "review";
+        else if (event.target.value !== "define" && status.value === "todo") status.value = "doing";
+        else if (status.value === "done" && event.target.value !== "deliver") status.value = "doing";
+      });
+    }
     $("#task-status").addEventListener("change", event => {
-      if (event.target.value === "done") setFormProgress(100);
-      else if (event.target.value === "todo" && $("#task-progress").value === "100") setFormProgress(0);
+      const step = $("#task-step");
+      if (!step) return;
+      step.value = inferStepFromStatus(event.target.value, step.value);
     });
+    const budgetCards = $("#budget-cards");
+    if (budgetCards) {
+      budgetCards.addEventListener("input", event => {
+        const field = event.target.closest("[data-tier-field]");
+        if (!field) return;
+        const card = field.closest("[data-tier-id]");
+        if (!card) return;
+        const tier = state.renderTiers.find(item => item.id === card.dataset.tierId);
+        if (!tier) return;
+        tier[field.dataset.tierField] = field.value;
+        persistRenderTiers();
+      });
+    }
+    const editBudgets = $("#edit-budgets-btn");
+    if (editBudgets) {
+      editBudgets.addEventListener("click", () => {
+        state.editingBudgets = !state.editingBudgets;
+        renderDashboard();
+        toast(state.editingBudgets ? "正在编辑三档目标（自动保存到本机）" : "已退出编辑");
+      });
+    }
+    const resetBudgets = $("#reset-budgets-btn");
+    if (resetBudgets) {
+      resetBudgets.addEventListener("click", () => {
+        if (!window.confirm("恢复默认三档渲染目标？你改过的文字会被覆盖。")) return;
+        state.renderTiers = (typeof PRODUCTION_BUDGETS !== "undefined" ? PRODUCTION_BUDGETS : []).map(item => normalizeRenderTier(item));
+        persistRenderTiers();
+        state.editingBudgets = false;
+        renderDashboard();
+        toast("已恢复默认三档目标");
+      });
+    }
     $("#close-dialog").addEventListener("click", closeTaskDialog);
     $("#cancel-dialog").addEventListener("click", closeTaskDialog);
     $("#task-dialog").addEventListener("click", event => {
@@ -450,9 +565,7 @@
   function updateTaskStatus(task, status) {
     if (!ensureCanEdit()) return false;
     task.status = status;
-    if (status === "done") task.progress = 100;
-    if (status === "todo") task.progress = 0;
-    if (status === "doing" && task.progress === 100) task.progress = 90;
+    task.step = inferStepFromStatus(status, task.step);
     saveTasks({ type: "upsert", task });
     renderAll();
     return true;
@@ -491,26 +604,42 @@
 
   function renderDashboard() {
     const total = state.tasks.length;
-    const overall = average(state.tasks.map(task => Number(task.progress)));
+    const steps = typeof WORKFLOW_STEPS !== "undefined" ? WORKFLOW_STEPS : [];
+    const stepScore = total ? Math.round(state.tasks.reduce((sum, task) => sum + stepIndex(task.step), 0) / Math.max(steps.length - 1, 1) / total * 100) : 0;
     const active = state.tasks.filter(task => ["doing", "review"].includes(task.status)).length;
     const done = state.tasks.filter(task => task.status === "done").length;
     const blocked = state.tasks.filter(task => task.status === "blocked").length;
     const remaining = state.tasks.filter(task => task.status !== "done").reduce((sum, task) => sum + Number(task.estimate || 0), 0);
     const pitfallCount = state.pitfalls.length;
+    const topStep = steps.length ? steps.reduce((best, step) => {
+      const count = state.tasks.filter(task => task.step === step.id && task.status !== "done").length;
+      return count > (best.count || 0) ? { ...step, count } : best;
+    }, { name: "—", count: 0 }) : { name: "—", count: 0 };
     $("#dashboard-stats").innerHTML = `
-      <article class="stat-card primary-stat"><span>制作进度</span><div class="stat-value"><strong>${overall}</strong><small>%</small></div><div class="stat-bar"><i style="width:${overall}%"></i></div><span class="stat-aside">全管线任务平均</span></article>
+      <article class="stat-card primary-stat"><span>推进分布</span><div class="stat-value"><strong>${esc(topStep.name)}</strong><small>当前最多</small></div><div class="stat-bar"><i style="width:${stepScore}%"></i></div><span class="stat-aside">${topStep.count || 0} 项卡在「${esc(topStep.name)}」· 按步骤而非百分比</span></article>
       <article class="stat-card"><span>正在推进</span><div class="stat-value"><strong>${active}</strong><small>项</small></div><span class="stat-aside">${blocked ? `${blocked} 项阻塞` : "含待验证"}</span></article>
-      <article class="stat-card"><span>已完成</span><div class="stat-value"><strong>${done}</strong><small>/ ${total} 项</small></div><div class="stat-bar"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></div></article>
+      <article class="stat-card"><span>已交付</span><div class="stat-value"><strong>${done}</strong><small>/ ${total} 项</small></div><div class="stat-bar"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></div></article>
       <article class="stat-card"><span>剩余人日 / 备忘</span><div class="stat-value"><strong>${Math.round(remaining * 10) / 10}</strong><small>人日</small></div><span class="stat-aside">${pitfallCount} 条开发坑点</span></article>`;
 
-    const budgets = typeof PRODUCTION_BUDGETS !== "undefined" ? PRODUCTION_BUDGETS : [];
-    $("#budget-cards").innerHTML = budgets.map(budget => `
-      <article class="budget-card budget-${esc(budget.id)}">
+    const editBtn = $("#edit-budgets-btn");
+    if (editBtn) editBtn.textContent = state.editingBudgets ? "完成编辑" : "编辑三档";
+    const budgets = state.renderTiers.length ? state.renderTiers : (typeof PRODUCTION_BUDGETS !== "undefined" ? PRODUCTION_BUDGETS : []);
+    $("#budget-cards").innerHTML = budgets.map(budget => {
+      if (state.editingBudgets) {
+        return `<article class="budget-card budget-editable budget-${esc(budget.id)}" data-tier-id="${esc(budget.id)}">
+          <label class="budget-edit-field"><span>档位名</span><input data-tier-field="name" value="${esc(budget.name)}" maxlength="24"></label>
+          <label class="budget-edit-field"><span>帧率 / 目标</span><input data-tier-field="target" value="${esc(budget.target)}" maxlength="80" placeholder="例如：更高卡 · 1080p 144+"></label>
+          <label class="budget-edit-field"><span>GI / 反射</span><input data-tier-field="gi" value="${esc(budget.gi)}" maxlength="80" placeholder="例如：Lumen GI + Lumen 反射"></label>
+          <label class="budget-edit-field"><span>备注</span><textarea data-tier-field="note" rows="2" maxlength="160" placeholder="阴影、后处理、物理预留等">${esc(budget.note)}</textarea></label>
+        </article>`;
+      }
+      return `<article class="budget-card budget-${esc(budget.id)}" data-tier-id="${esc(budget.id)}">
         <span class="budget-tier">${esc(budget.name)}</span>
         <strong>${esc(budget.target)}</strong>
-        <p><b>GI</b> ${esc(budget.gi)}</p>
+        <p><b>GI / 反射</b> ${esc(budget.gi)}</p>
         <small>${esc(budget.note)}</small>
-      </article>`).join("");
+      </article>`;
+    }).join("");
 
     const all = getAllPipelines();
     const title = $("#pipeline-panel-title");
@@ -518,14 +647,16 @@
     $("#pipeline-cards").innerHTML = pipelineOrder().map(id => {
       const pipeline = all[id];
       const tasks = state.tasks.filter(task => task.pipeline === id);
-      const progress = average(tasks.map(task => Number(task.progress)));
+      const maxStep = Math.max((typeof WORKFLOW_STEPS !== "undefined" ? WORKFLOW_STEPS.length : 1) - 1, 1);
+      const progress = tasks.length ? Math.round(tasks.reduce((sum, task) => sum + stepIndex(task.step), 0) / maxStep / tasks.length * 100) : 0;
       const doneCount = tasks.filter(task => task.status === "done").length;
       const activeCount = tasks.filter(task => ["doing", "review"].includes(task.status)).length;
       const notes = state.pitfalls.filter(item => item.pipeline === id).length;
+      const hot = tasks.filter(task => task.status !== "done").sort((a, b) => stepIndex(b.step) - stepIndex(a.step))[0];
       return `<button class="pipeline-card" data-pipeline="${esc(id)}" style="--accent:${pipeline.color}">
-        <div class="pipeline-card-top"><span class="pipeline-icon">${esc(pipeline.short)}</span><span class="pipeline-name"><strong>${esc(pipeline.name)}</strong><small>${esc(pipeline.en)}</small></span><span class="pipeline-percent">${progress}<small>%</small></span></div>
+        <div class="pipeline-card-top"><span class="pipeline-icon">${esc(pipeline.short)}</span><span class="pipeline-name"><strong>${esc(pipeline.name)}</strong><small>${esc(pipeline.en)}</small></span><span class="pipeline-percent">${doneCount}<small>/${tasks.length}</small></span></div>
         <div class="stat-bar"><i style="width:${progress}%"></i></div>
-        <div class="pipeline-card-foot"><span>${doneCount} / ${tasks.length} 已完成</span><span>${activeCount ? `${activeCount} 项进行中` : notes ? `${notes} 条备忘` : esc(pipeline.description)}</span></div>
+        <div class="pipeline-card-foot"><span>${hot ? `多在「${esc(stepOf(hot.step).name)}」` : `${doneCount} 已交付`}</span><span>${activeCount ? `${activeCount} 项进行中` : notes ? `${notes} 条备忘` : esc(pipeline.description)}</span></div>
       </button>`;
     }).join("");
 
@@ -540,11 +671,12 @@
     $("#mini-roadmap").innerHTML = flat.slice(0, 6).map(item => {
       const linked = item.taskHint ? state.tasks.find(task => task.id === item.taskHint) : null;
       const done = linked ? linked.status === "done" : false;
-      const progress = linked ? Number(linked.progress || 0) : 0;
-      return `<button class="mini-check${done ? " done" : ""}${progress && !done ? " active" : ""}" data-task-id="${esc(linked?.id || "")}" ${linked ? "" : "disabled"}>
+      const stepName = linked ? stepOf(linked.step).name : "";
+      const active = linked && !done && linked.step && linked.step !== "define";
+      return `<button class="mini-check${done ? " done" : ""}${active ? " active" : ""}" data-task-id="${esc(linked?.id || "")}" ${linked ? "" : "disabled"}>
         <span class="mini-dot"></span>
         <strong>${esc(item.title)}</strong>
-        <small>${linked ? `${esc(linked.id)} · ${progress}%` : "见制作清单"}</small>
+        <small>${linked ? `${esc(linked.id)} · ${esc(stepName)}${linked.stepNote ? ` · ${esc(linked.stepNote)}` : ""}` : "见制作清单"}</small>
       </button>`;
     }).join("");
   }
@@ -587,11 +719,13 @@
   function taskCard(task) {
     const pipeline = pipelineOf(task);
     const due = task.due ? formatDate(task.due) : `${task.estimate} 人日`;
+    const step = stepOf(task.step);
+    const note = task.stepNote ? ` · ${esc(task.stepNote)}` : "";
     return `<article class="task-card" draggable="true" data-task-id="${esc(task.id)}" style="--accent:${pipeline.color}">
       <div class="task-card-top"><span class="task-id">${esc(task.id)}</span><span class="priority ${task.priority}">${task.priority}</span></div>
       <h3>${esc(task.title)}</h3>
       <span class="card-pipeline"><i></i>${esc(pipeline.name)} · ${task.phase}</span>
-      <div class="card-progress"><div class="stat-bar"><i style="width:${task.progress}%"></i></div><small>${task.progress}%</small></div>
+      <div class="card-step"><span class="step-chip step-${esc(task.step)}">${esc(step.name)}</span><small>${esc(step.name)}阶段${note}</small></div>
       <button class="complete-btn" data-complete-id="${esc(task.id)}" title="${task.status === "done" ? "重新打开" : "标记完成"}">${icon("check")}</button>
       <div class="task-card-foot"><span>${icon("clock")}${esc(due)}</span><span>${task.priority === "P0" ? "核心路径" : task.priority === "P1" ? "重要功能" : "增强功能"}</span></div>
     </article>`;
@@ -609,10 +743,12 @@
       $("#task-list").innerHTML = `<div class="empty-state">没有符合当前筛选条件的任务。</div>`;
       return;
     }
-    $("#task-list").innerHTML = `<table class="task-table"><thead><tr><th>编号</th><th>任务</th><th>管线 / 阶段</th><th>优先级</th><th>状态</th><th>进度</th><th>预估</th></tr></thead><tbody>${tasks.map(task => {
+    $("#task-list").innerHTML = `<table class="task-table"><thead><tr><th>编号</th><th>任务</th><th>管线 / 阶段</th><th>优先级</th><th>状态</th><th>做到哪一步</th><th>预估</th></tr></thead><tbody>${tasks.map(task => {
       const pipeline = pipelineOf(task);
       const status = statusOf(task.status);
-      return `<tr data-task-id="${esc(task.id)}"><td><span class="task-id">${esc(task.id)}</span></td><td>${esc(task.title)}</td><td><span class="table-pipeline" style="--accent:${pipeline.color}"><i></i>${esc(pipeline.name)} · ${task.phase}</span></td><td><span class="priority ${task.priority}">${task.priority}</span></td><td><span class="status-chip" style="--status-color:${status.color}">${status.name}</span></td><td><div class="table-progress"><div class="stat-bar"><i style="width:${task.progress}%;background:${pipeline.color}"></i></div><span>${task.progress}%</span></div></td><td>${task.estimate} 人日</td></tr>`;
+      const step = stepOf(task.step);
+      const note = task.stepNote ? `<small class="step-note">${esc(task.stepNote)}</small>` : "";
+      return `<tr data-task-id="${esc(task.id)}"><td><span class="task-id">${esc(task.id)}</span></td><td>${esc(task.title)}</td><td><span class="table-pipeline" style="--accent:${pipeline.color}"><i></i>${esc(pipeline.name)} · ${task.phase}</span></td><td><span class="priority ${task.priority}">${task.priority}</span></td><td><span class="status-chip" style="--status-color:${status.color}">${status.name}</span></td><td><div class="table-step"><span class="step-chip step-${esc(task.step)}">${esc(step.name)}</span>${note}</div></td><td>${task.estimate} 人日</td></tr>`;
     }).join("")}</tbody></table>`;
   }
 
@@ -624,12 +760,12 @@
         const cards = group.items.map(item => {
           const linked = item.taskHint ? state.tasks.find(task => task.id === item.taskHint) : null;
           const status = linked ? statusOf(linked.status).name : "清单项";
-          const progress = linked ? Number(linked.progress || 0) : 0;
+          const stepName = linked ? stepOf(linked.step).name : "";
           const done = linked?.status === "done";
           return `<article class="studio-card${done ? " done" : ""}">
             <div class="studio-card-top"><strong>${esc(item.title)}</strong>${item.taskHint ? `<span class="task-id">${esc(item.taskHint)}</span>` : `<span class="task-id">备忘</span>`}</div>
             <p>${esc(item.detail)}</p>
-            <div class="studio-card-foot"><span>${esc(status)}${linked ? ` · ${progress}%` : ""}</span>${linked ? `<button type="button" class="text-btn" data-task-id="${esc(linked.id)}">打开任务</button>` : `<button type="button" class="text-btn" data-view-link="guide">去写备忘</button>`}</div>
+            <div class="studio-card-foot"><span>${esc(status)}${linked ? ` · ${esc(stepName)}${linked.stepNote ? ` · ${esc(linked.stepNote)}` : ""}` : ""}</span>${linked ? `<button type="button" class="text-btn" data-task-id="${esc(linked.id)}">打开任务</button>` : `<button type="button" class="text-btn" data-view-link="guide">去写备忘</button>`}</div>
           </article>`;
         }).join("");
         return `<section class="studio-group"><div class="panel-heading"><div><span class="section-kicker">CHECKLIST</span><h2>${esc(group.group)}</h2></div></div><div class="studio-grid">${cards}</div></section>`;
@@ -688,6 +824,8 @@
     $("#task-phase").value = task?.phase || (state.phase !== "all" ? state.phase : "M0");
     $("#task-priority").value = task?.priority || "P1";
     $("#task-status").value = task?.status || "todo";
+    if ($("#task-step")) $("#task-step").value = task?.step || "define";
+    if ($("#task-step-note")) $("#task-step-note").value = task?.stepNote || "";
     $("#task-estimate").value = task?.estimate ?? 1;
     $("#task-due").value = task?.due || "";
     $("#task-description").value = task?.description || "";
@@ -699,7 +837,6 @@
     $("#new-pipeline-en").value = "";
     $("#new-pipeline-color").value = "#6b8f71";
     toggleNewPipelineFields();
-    setFormProgress(task?.progress || 0);
     $("#delete-task").hidden = !task;
     $("#task-dialog").showModal();
     requestAnimationFrame(() => $("#task-title").focus());
@@ -709,10 +846,6 @@
     $("#task-dialog").close();
   }
 
-  function setFormProgress(value) {
-    $("#task-progress").value = value;
-    $("#progress-output").textContent = `${value}%`;
-  }
 
   function createPipelineFromForm() {
     const name = $("#new-pipeline-name").value.trim();
@@ -747,14 +880,17 @@
     }
     const id = $("#task-id").value;
     const existing = state.tasks.find(task => task.id === id);
+    const status = $("#task-status").value;
+    const step = $("#task-step")?.value || inferStepFromStatus(status, "define");
     const nextTask = normalizeTask({
       id: id || `U-${(globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`).toUpperCase()}`,
       title: $("#task-title").value.trim(),
       pipeline: pipelineValue,
       phase: $("#task-phase").value,
       priority: $("#task-priority").value,
-      status: $("#task-status").value,
-      progress: $("#task-status").value === "done" ? 100 : $("#task-progress").value,
+      status,
+      step: status === "done" ? "deliver" : step,
+      stepNote: ($("#task-step-note")?.value || "").trim(),
       estimate: $("#task-estimate").value,
       due: $("#task-due").value,
       description: $("#task-description").value.trim(),
@@ -845,11 +981,12 @@
   function exportData() {
     const payload = {
       app: "LUMA Game Production",
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       tasks: state.tasks,
       pipelines: state.customPipelines,
-      pitfalls: state.pitfalls
+      pitfalls: state.pitfalls,
+      renderTiers: state.renderTiers
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -860,7 +997,7 @@
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast("备份已导出（含管线与备忘）");
+    toast("备份已导出（含管线、备忘与三档目标）");
   }
 
   function importData(event) {
@@ -874,7 +1011,7 @@
         if (!Array.isArray(data.tasks)) throw new Error("备份中缺少 tasks 数组");
         const imported = data.tasks.map(normalizeTask).filter(task => task.id && task.title);
         if (!imported.length) throw new Error("备份中没有有效任务");
-        if (!window.confirm(`将用备份中的 ${imported.length} 项任务替换当前 ${state.tasks.length} 项任务，并合并自定义管线 / 开发备忘。建议先导出当前数据，是否继续？`)) return;
+        if (!window.confirm(`将用备份中的 ${imported.length} 项任务替换当前 ${state.tasks.length} 项任务，并合并自定义管线 / 开发备忘 / 三档目标。建议先导出当前数据，是否继续？`)) return;
         if (data.pipelines && typeof data.pipelines === "object") {
           Object.entries(data.pipelines).forEach(([id, pipeline]) => {
             if (PIPELINES[id]) return;
@@ -885,6 +1022,10 @@
         if (Array.isArray(data.pitfalls)) {
           state.pitfalls = data.pitfalls.map(normalizePitfall).filter(item => item.id && item.title);
           persistPitfalls();
+        }
+        if (Array.isArray(data.renderTiers) && data.renderTiers.length) {
+          state.renderTiers = data.renderTiers.map(normalizeRenderTier).filter(item => item.id && item.name);
+          persistRenderTiers();
         }
         state.tasks = imported;
         fillPipelineSelects();

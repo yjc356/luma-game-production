@@ -194,10 +194,9 @@ select, input, textarea { color: var(--ink); }
 .task-card h3 { margin: 10px 0 12px; font-size: 12px; font-weight: 600; line-height: 1.55; }
 .task-card .card-pipeline { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); font-size: 9px; }
 .card-pipeline i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
-.card-progress { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-.card-progress .stat-bar { flex: 1; margin: 0; height: 3px; }
-.card-progress .stat-bar i { background: var(--accent); }
-.card-progress small { color: #8d9990; font-size: 8px; }
+.card-progress { display: none; }
+.card-step { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.card-step small { color: #8d9990; font-size: 9px; }
 .task-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 5px; border-top: 1px solid #edf0eb; margin-top: 12px; padding-top: 10px; color: #96a098; font-size: 8px; }
 .task-card-foot span { display: flex; align-items: center; gap: 4px; }
 .task-card-foot svg { width: 11px; height: 11px; }
@@ -530,3 +529,28 @@ select, input, textarea { color: var(--ink); }
   .invite-box > div { align-items: flex-start; flex-direction: column; }
   .cloud-actions.spread .danger-btn { margin-left: 0; }
 }
+
+
+.panel-subhint { margin: 6px 0 0; color: #7a877e; font-size: 11px; line-height: 1.55; max-width: 52ch; }
+.heading-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.card-step { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.card-step small { color: #8d9990; font-size: 9px; }
+.step-chip { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 8px; font-size: 10px; font-weight: 650; letter-spacing: .2px; background: #e8eee6; color: #4f5d53; }
+.step-define { background: #e9ece8; color: #6a756d; }
+.step-research { background: #e7eef8; color: #4f6f9b; }
+.step-implement { background: #f5ecd9; color: #9a6f2f; }
+.step-integrate { background: #e6f0ec; color: #3f7d6f; }
+.step-verify { background: #e8e7f7; color: #5b5ea8; }
+.step-deliver { background: #e4f0e6; color: #3f7a52; }
+.table-step { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.table-step .step-note { color: #8a968d; font-size: 10px; }
+.budget-card.budget-editable { display: flex; flex-direction: column; gap: 8px; }
+.budget-edit-field { display: flex; flex-direction: column; gap: 4px; }
+.budget-edit-field span { font-size: 10px; color: #748074; }
+.budget-edit-field input,
+.budget-edit-field textarea { width: 100%; border: 1px solid #d5ddd2; border-radius: 8px; background: #fff; padding: 8px 10px; font: inherit; color: var(--ink); resize: vertical; }
+.budget-edit-field input:focus,
+.budget-edit-field textarea:focus { outline: 2px solid color-mix(in srgb, var(--green) 35%, white); border-color: #b7c8b4; }
+
+.budget-panel .panel-heading { align-items: flex-start; gap: 14px; }
+.budget-card p b { color: #4f5d53; font-weight: 650; margin-right: 4px; }

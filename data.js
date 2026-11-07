@@ -19,6 +19,16 @@ const PHASES = [
   { id: "M5", name: "发布收口", en: "SHIP", goal: "兼容、设置、打包与问题上报流程收口。", gate: "候选包过回归；发布与回滚可用。" }
 ];
 
+
+const WORKFLOW_STEPS = [
+  { id: "define", name: "定义" },
+  { id: "research", name: "预研" },
+  { id: "implement", name: "实现" },
+  { id: "integrate", name: "接入" },
+  { id: "verify", name: "验证" },
+  { id: "deliver", name: "交付" }
+];
+
 const STATUSES = [
   { id: "todo", name: "未开始", color: "#a0aaa2" },
   { id: "doing", name: "进行中", color: "#d59a48" },
@@ -28,7 +38,7 @@ const STATUSES = [
 ];
 
 function task(id, pipeline, phase, priority, title, estimate, description, deliverable, acceptance, dependencies = "") {
-  return { id, pipeline, phase, priority, title, estimate, description, deliverable, acceptance, dependencies, status: "todo", progress: 0, due: "", custom: false };
+  return { id, pipeline, phase, priority, title, estimate, description, deliverable, acceptance, dependencies, status: "todo", step: "define", progress: 0, due: "", custom: false };
 }
 
 const DEFAULT_TASKS = [
@@ -214,9 +224,9 @@ const STUDIO_CHECKLIST = [
 ];
 
 const PRODUCTION_BUDGETS = [
-  { id: "high", name: "高档", target: "更高卡 · 1080p 144+", gi: "压缩 Lumen GI", note: "反射默认关/严控；给 Chaos 留帧" },
-  { id: "mid", name: "中档", target: "RTX 2060 · 1080p 100+", gi: "SSGI + SSR", note: "限距 CSM；主目标档" },
-  { id: "low", name: "低档", target: "入门本 · 1080p 60+", gi: "半分辨率 SSGI / DFAO", note: "点光 4 面投影；最少后处理" }
+  { id: "high", name: "高档", target: "更高卡 · 1080p 144+", gi: "压缩 Lumen GI（反射可开）", note: "默认可开 Lumen 反射；给 Chaos 留帧。可在本页直接改。" },
+  { id: "mid", name: "中档", target: "RTX 2060 · 1080p 100+", gi: "SSGI + SSR（可改 Lumen 反射）", note: "限距 CSM；主目标档。反射方案可按美术需要改。" },
+  { id: "low", name: "低档", target: "入门本 · 1080p 60+", gi: "半分辨率 SSGI / DFAO", note: "点光 4 面投影；最少后处理。可在本页直接改。" }
 ];
 
 const DEFAULT_PITFALLS = [
