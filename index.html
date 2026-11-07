@@ -39,12 +39,12 @@
         <button class="nav-item active" data-view="dashboard"><svg><use href="#i-grid"/></svg><span>开发总览</span></button>
         <button class="nav-item" data-view="tasks"><svg><use href="#i-board"/></svg><span>任务看板</span><b id="nav-task-count">0</b></button>
         <button class="nav-item" data-view="roadmap"><svg><use href="#i-road"/></svg><span>开发路线</span></button>
-        <button class="nav-item" data-view="guide"><svg><use href="#i-book"/></svg><span>流程与规范</span></button>
+        <button class="nav-item" data-view="guide"><svg><use href="#i-book"/></svg><span>开发备忘</span></button>
       </nav>
       <div class="sidebar-project">
         <div class="project-top"><span class="project-dot"></span><span>当前项目</span><span class="engine-tag">UE 5.8</span></div>
-        <strong>PROJECT / 01</strong>
-        <p>3D 游戏 · 可扩展多人架构</p>
+        <strong>LUMA / ISLAND</strong>
+        <p>小岛生存 · 动态 TOD · Chaos 预算优先</p>
         <div class="project-progress"><span id="side-progress"></span></div>
         <small><span id="side-done">0</span> / <span id="side-total">0</span> 项任务完成</small>
       </div>
@@ -70,23 +70,27 @@
       <div class="content">
         <section id="view-dashboard" class="view active" aria-labelledby="dashboard-title">
           <div class="page-heading dashboard-heading">
-            <div><p class="eyebrow">PRODUCTION OVERVIEW</p><h1 id="dashboard-title">从画面表现，到完整游戏。</h1><p>把创意拆成可交付、可验证的开发步骤。</p></div>
-            <div class="date-block"><span id="today-date"></span><small>独立开发工作台</small></div>
+            <div><p class="eyebrow">GAME PRODUCTION CONSOLE</p><h1 id="dashboard-title">海岛能跑稳，再谈好看。</h1><p>按制作管线拆任务；帧率预算给 Chaos 与建设 Actor 留空，阶段是质量闸门。</p></div>
+            <div class="date-block"><span id="today-date"></span><small>UE5 小岛生存制作台</small></div>
           </div>
           <div id="dashboard-stats" class="stats-grid"></div>
+          <section class="panel budget-panel">
+            <div class="panel-heading"><div><span class="section-kicker">FRAME BUDGET · 1080P</span><h2>三档渲染目标</h2></div><button class="text-btn" data-go-tasks="render">渲染任务<svg><use href="#i-arrow"/></svg></button></div>
+            <div id="budget-cards" class="budget-cards"></div>
+          </section>
           <div class="dashboard-grid">
             <section class="panel pipeline-panel">
-              <div class="panel-heading"><div><span class="section-kicker">PRODUCTION PIPELINES</span><h2>六大开发管线</h2></div><button class="text-btn" data-go-tasks="all">查看全部<svg><use href="#i-arrow"/></svg></button></div>
+              <div class="panel-heading"><div><span class="section-kicker">PRODUCTION PIPELINES</span><h2 id="pipeline-panel-title">制作管线</h2></div><button class="text-btn" data-go-tasks="all">查看全部<svg><use href="#i-arrow"/></svg></button></div>
               <div id="pipeline-cards" class="pipeline-cards"></div>
             </section>
             <aside class="panel focus-panel">
-              <div class="panel-heading"><div><span class="section-kicker">NEXT UP</span><h2>建议优先推进</h2></div></div>
-              <p class="panel-intro">优先完成架构与可玩闭环，避免后期返工。</p>
+              <div class="panel-heading"><div><span class="section-kicker">P0 GATES</span><h2>建议优先推进</h2></div></div>
+              <p class="panel-intro">先打通可玩与性能闸门，避免后期返工；开工前可看「开发备忘」里的坑。</p>
               <div id="focus-list" class="focus-list"></div>
             </aside>
           </div>
           <section class="panel sprint-panel">
-            <div class="panel-heading"><div><span class="section-kicker">DELIVERY SEQUENCE</span><h2>当前交付节奏</h2></div><button class="text-btn" data-view-link="roadmap">完整路线<svg><use href="#i-arrow"/></svg></button></div>
+            <div class="panel-heading"><div><span class="section-kicker">PHASE GATES</span><h2>阶段质量闸门</h2></div><button class="text-btn" data-view-link="roadmap">完整路线<svg><use href="#i-arrow"/></svg></button></div>
             <div id="mini-roadmap" class="mini-roadmap"></div>
           </section>
         </section>
@@ -112,12 +116,23 @@
         </section>
 
         <section id="view-guide" class="view" aria-labelledby="guide-title">
-          <div class="page-heading compact-heading"><div><p class="eyebrow">WORKFLOW & DEFINITION OF DONE</p><h1 id="guide-title">流程与规范</h1><p>给每项功能同一条从需求到验收的路径。</p></div></div>
-          <div class="guide-hero"><span>ONE FEATURE · FULL LOOP</span><h2>需求不是完成，稳定交付才是。</h2><p>每个功能都要经过实现、调试、性能验证、联机检查与内容接入，而不是只在编辑器里运行一次。</p></div>
-          <div id="workflow-steps" class="workflow-steps"></div>
-          <div class="guide-columns">
-            <section class="panel"><div class="panel-heading"><div><span class="section-kicker">DEFINITION OF DONE</span><h2>任务完成标准</h2></div></div><ul class="check-list"><li>功能在独立运行包或目标运行方式中验证，不只停留在 PIE。</li><li>交付物、参数和接入方式清楚，其他模块可以复用。</li><li>正常流程、边界条件和失败流程均有验证。</li><li>达到对应平台与质量档位的性能预算，无持续报错。</li><li>涉及 gameplay 的功能已验证客户端、服务器与断线场景。</li><li>任务进度、验收记录和遗留风险已更新。</li></ul></section>
-            <section class="panel"><div class="panel-heading"><div><span class="section-kicker">WORKING AGREEMENT</span><h2>独立开发建议</h2></div></div><div class="agreement-list"><div><b>01</b><p><strong>保持一个小闭环</strong><span>每个迭代只交付一个可玩的完整能力。</span></p></div><div><b>02</b><p><strong>先灰盒，再精品化</strong><span>玩法、网络与性能先成立，再投入高成本美术。</span></p></div><div><b>03</b><p><strong>以数据决定技术选型</strong><span>Lumen、Niagara、GAS 等均通过目标场景验证。</span></p></div><div><b>04</b><p><strong>每周导出一次备份</strong><span>本地模式保存在浏览器中；云端模式也会保留本地副本，仍建议定期导出。</span></p></div></div></section>
+          <div class="page-heading compact-heading">
+            <div><p class="eyebrow">AGENT MEMORY · PIPELINE PITFALLS</p><h1 id="guide-title">管线开发备忘</h1><p>每次开发后把踩过的坑记在对应管线；下次开工前先读，避免反复改。</p></div>
+            <button class="primary-btn" id="add-pitfall-btn" type="button"><svg><use href="#i-plus"/></svg>记录新坑</button>
+          </div>
+          <div class="guide-hero pitfalls-hero"><span>READ BEFORE YOU CODE</span><h2>备忘是制作记忆，不是流程口号。</h2><p>按管线归档：现象、原因、正确做法、相关任务编号。导出备份会一并带走；云端任务同步不受影响。</p></div>
+          <div class="pitfalls-layout">
+            <aside class="panel pitfalls-nav-panel">
+              <div class="panel-heading"><div><span class="section-kicker">PIPELINES</span><h2>选择管线</h2></div></div>
+              <div id="pitfall-pipeline-list" class="pitfall-pipeline-list"></div>
+            </aside>
+            <section class="panel pitfalls-list-panel">
+              <div class="panel-heading">
+                <div><span class="section-kicker">NOTES</span><h2 id="pitfall-pipeline-heading">渲染管线</h2></div>
+                <small id="pitfall-count">0 条</small>
+              </div>
+              <div id="pitfalls-list" class="pitfalls-list"></div>
+            </section>
           </div>
         </section>
       </div>
@@ -132,6 +147,15 @@
         <label class="field full"><span>任务名称 <b>*</b></span><input id="task-title" required maxlength="80" placeholder="例如：建立角色基础移动动画"></label>
         <div class="form-grid">
           <label class="field"><span>所属管线</span><select id="task-pipeline"></select></label>
+          <div id="new-pipeline-fields" class="new-pipeline-fields full" hidden>
+            <div class="form-grid">
+              <label class="field"><span>管线名称 <b>*</b></span><input id="new-pipeline-name" maxlength="24" placeholder="例如：音频管线"></label>
+              <label class="field"><span>简称</span><input id="new-pipeline-short" maxlength="2" placeholder="音"></label>
+              <label class="field"><span>英文标识</span><input id="new-pipeline-en" maxlength="24" placeholder="AUDIO"></label>
+              <label class="field"><span>颜色</span><input id="new-pipeline-color" type="color" value="#6b8f71"></label>
+            </div>
+            <p class="field-hint">保存任务时会创建该管线，并写入本地；筛选与卡片会立即出现。</p>
+          </div>
           <label class="field"><span>开发阶段</span><select id="task-phase"></select></label>
           <label class="field"><span>优先级</span><select id="task-priority"><option value="P0">P0 · 必须</option><option value="P1">P1 · 重要</option><option value="P2">P2 · 增强</option></select></label>
           <label class="field"><span>当前状态</span><select id="task-status"></select></label>
@@ -150,6 +174,21 @@
   <dialog id="cloud-dialog" class="task-dialog cloud-dialog">
     <div class="dialog-header"><div><span class="section-kicker">TEAM COLLABORATION</span><h2>团队协作与云端同步</h2></div><button type="button" class="icon-btn" id="close-cloud-dialog" aria-label="关闭"><svg><use href="#i-close"/></svg></button></div>
     <div class="dialog-body" id="cloud-dialog-body"></div>
+  </dialog>
+  <dialog id="pitfall-dialog" class="task-dialog">
+    <form id="pitfall-form">
+      <div class="dialog-header"><div><span class="section-kicker" id="pitfall-dialog-kicker">NEW PITFALL</span><h2 id="pitfall-dialog-title">记录开发坑点</h2></div><button type="button" class="icon-btn" id="close-pitfall-dialog" aria-label="关闭"><svg><use href="#i-close"/></svg></button></div>
+      <div class="dialog-body">
+        <input type="hidden" id="pitfall-id">
+        <label class="field full"><span>标题 <b>*</b></span><input id="pitfall-title" required maxlength="80" placeholder="例如：低画质点光不要默认 6 面投影"></label>
+        <div class="form-grid">
+          <label class="field"><span>所属管线</span><select id="pitfall-pipeline"></select></label>
+          <label class="field"><span>相关任务编号</span><input id="pitfall-task" maxlength="24" placeholder="例如：R-22"></label>
+        </div>
+        <label class="field full"><span>坑点说明</span><textarea id="pitfall-body" rows="6" required placeholder="现象 / 原因 / 正确做法。可用换行分段。"></textarea></label>
+      </div>
+      <div class="dialog-footer"><button type="button" class="danger-btn" id="delete-pitfall" hidden><svg><use href="#i-trash"/></svg>删除</button><span></span><button type="button" class="secondary-btn" id="cancel-pitfall-dialog">取消</button><button type="submit" class="primary-btn">保存备忘</button></div>
+    </form>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="data.js"></script>

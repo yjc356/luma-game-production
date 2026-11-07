@@ -148,11 +148,35 @@ const DEFAULT_TASKS = [
   task("N-19", "network", "M4", "P0", "多人压力长稳与异常恢复", 5, "目标人数 soak、加入退出风暴、断线与地图切换。", "Soak 报告；压力脚本；关服流程。", "无持续泄漏与严重不同步；可安全恢复。", "N-14；N-16；N-18")
 ];
 
-const WORKFLOW = [
-  { name: "定义", text: "明确玩家价值、使用场景、优先级和不做范围。" },
-  { name: "预研", text: "用最小场景验证引擎方案、性能与网络风险。" },
-  { name: "实现", text: "先灰盒打通接口，再补完整功能和错误处理。" },
-  { name: "接入", text: "接入动画、特效、UI、音频和真实 gameplay 数据。" },
-  { name: "验证", text: "独立包、目标硬件、多人异常和性能共同验收。" },
-  { name: "交付", text: "记录使用方式、预算、遗留风险并更新任务状态。" }
+const PRODUCTION_BUDGETS = [
+  { id: "high", name: "高档", target: "更高卡 · 1080p 144+", gi: "压缩 Lumen GI", note: "反射默认关/严控；给 Chaos 留帧" },
+  { id: "mid", name: "中档", target: "RTX 2060 · 1080p 100+", gi: "SSGI + SSR", note: "限距 CSM；主目标档" },
+  { id: "low", name: "低档", target: "入门本 · 1080p 60+", gi: "半分辨率 SSGI / DFAO", note: "点光 4 面投影；最少后处理" }
+];
+
+const DEFAULT_PITFALLS = [
+  {
+    id: "pit-render-01",
+    pipeline: "render",
+    title: "低画质点光不要默认 6 面投影",
+    body: "Point Light 立方体阴影默认 6 面很贵。低档/中档 Scalability 改为 4 面（或等价降面）+ 限制动态点光数量与衰减距离。改完用 RenderLab 固定路径对比 GPU 阴影 Pass。相关任务：R-22。",
+    relatedTaskId: "R-22",
+    createdAt: "2026-11-08T00:00:00.000Z"
+  },
+  {
+    id: "pit-render-02",
+    pipeline: "render",
+    title: "关 Lumen Reflections ≠ SDF 白建",
+    body: "Lumen SDF/Surface Cache 主要服务 GI（Screen Probe / Final Gather）。关掉 Lumen Reflections 只砍反射射线路径，并不让 SDF 失效。高档常见策略：留 Lumen GI、关或狠压 Reflections，镜面走 SSR。",
+    relatedTaskId: "R-08",
+    createdAt: "2026-11-08T00:00:00.000Z"
+  },
+  {
+    id: "pit-physics-01",
+    pipeline: "physics",
+    title: "海岛长大后别让 Chaos 全员 Awake",
+    body: "建设物/掉落物必须 Sleep/Wake 分层。远距与静止强制 Sleep；交互或破坏再 Wake。压力存档要能熔断（强制 Sleep、合并静态、关投影）。相关任务：P-02、P-06。",
+    relatedTaskId: "P-06",
+    createdAt: "2026-11-08T00:00:00.000Z"
+  }
 ];

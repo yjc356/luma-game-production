@@ -2,14 +2,21 @@
   "use strict";
 
   const STORAGE_KEY = "luma-game-production-v1";
+  const PIPELINES_KEY = "luma-pipelines";
+  const PITFALLS_KEY = "luma-pitfalls";
+  const NEW_PIPELINE_VALUE = "__new__";
+
   const state = {
     tasks: [],
+    customPipelines: {},
+    pitfalls: [],
     view: "dashboard",
     pipeline: "all",
     phase: "all",
     priority: "all",
     query: "",
-    layout: "board"
+    layout: "board",
+    pitfallPipeline: "render"
   };
   let toastTimer;
   let saveTimer;
@@ -17,17 +24,34 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const esc = (value = "") => String(value).replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
-  const pipelineOf = task => PIPELINES[task.pipeline] || PIPELINES.client;
   const phaseOf = id => PHASES.find(phase => phase.id === id) || PHASES[0];
   const statusOf = id => STATUSES.find(status => status.id === id) || STATUSES[0];
   const average = values => values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : 0;
   const icon = (name, className = "") => `<svg${className ? ` class="${className}"` : ""}><use href="#i-${name}"/></svg>`;
+  const uid = prefix => `${prefix}-${(globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).replace(/-/g, "").slice(0, 12)}`;
+
+  function getAllPipelines() {
+    return { ...PIPELINES, ...state.customPipelines };
+  }
+
+  function pipelineOf(taskOrId) {
+    const id = typeof taskOrId === "string" ? taskOrId : taskOrId?.pipeline;
+    const all = getAllPipelines();
+    return all[id] || { name: id || "未知管线", en: "CUSTOM", short: "?", color: "#8a948c", description: "自定义或已归档管线" };
+  }
+
+  function pipelineOrder() {
+    const builtin = Object.keys(PIPELINES);
+    const custom = Object.keys(state.customPipelines).filter(id => !PIPELINES[id]);
+    return [...builtin, ...custom];
+  }
 
   function init() {
+    loadCustomPipelines();
+    loadPitfalls();
     loadTasks();
     fillFormOptions();
     bindEvents();
-    renderStaticContent();
     $("#today-date").textContent = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date());
     renderAll();
     window.LumaCloud.init({
@@ -40,11 +64,87 @@
   function applyCloudTasks(tasks) {
     const backupKey = `${STORAGE_KEY}-before-cloud`;
     if (!localStorage.getItem(backupKey)) {
-      localStorage.setItem(backupKey, JSON.stringify({ version: 1, tasks: state.tasks }));
+      localStorage.setItem(backupKey, JSON.stringify({ version: 2, tasks: state.tasks, pipelines: state.customPipelines, pitfalls: state.pitfalls }));
     }
     state.tasks = tasks.map(normalizeTask).filter(task => task.id && task.title);
     persistLocalTasks();
     renderAll();
+  }
+
+  function loadCustomPipelines() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PIPELINES_KEY) || "{}");
+      if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+        state.customPipelines = Object.fromEntries(
+          Object.entries(saved)
+            .filter(([id, pipeline]) => id && pipeline && pipeline.name && !PIPELINES[id])
+            .map(([id, pipeline]) => [id, normalizePipeline(id, pipeline)])
+        );
+      }
+    } catch (error) {
+      console.warn("无法读取自定义管线", error);
+      state.customPipelines = {};
+    }
+  }
+
+  function persistCustomPipelines() {
+    localStorage.setItem(PIPELINES_KEY, JSON.stringify(state.customPipelines));
+  }
+
+  function normalizePipeline(id, pipeline = {}) {
+    const short = String(pipeline.short || pipeline.name || id).slice(0, 2) || "?";
+    return {
+      name: String(pipeline.name || id).slice(0, 24),
+      en: String(pipeline.en || id).toUpperCase().slice(0, 24),
+      short,
+      color: /^#[0-9a-fA-F]{6}$/.test(pipeline.color || "") ? pipeline.color : "#6b8f71",
+      description: String(pipeline.description || "自定义制作管线").slice(0, 80),
+      custom: true
+    };
+  }
+
+  function slugifyPipelineId(name) {
+    const base = String(name || "custom")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 18) || "custom";
+    let id = `x-${base}`.replace(/[^\w\-]/g, "");
+    if (!id.startsWith("x-")) id = `x-${Date.now().toString(36)}`;
+    const all = getAllPipelines();
+    if (!all[id]) return id;
+    return `${id}-${Math.random().toString(36).slice(2, 5)}`;
+  }
+
+  function loadPitfalls() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PITFALLS_KEY));
+      if (saved && Array.isArray(saved.pitfalls)) {
+        state.pitfalls = saved.pitfalls.map(normalizePitfall).filter(item => item.id && item.title);
+        return;
+      }
+    } catch (error) {
+      console.warn("无法读取开发备忘", error);
+    }
+    state.pitfalls = (typeof DEFAULT_PITFALLS !== "undefined" ? DEFAULT_PITFALLS : []).map(item => ({ ...item }));
+    persistPitfalls();
+  }
+
+  function persistPitfalls() {
+    localStorage.setItem(PITFALLS_KEY, JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), pitfalls: state.pitfalls }));
+  }
+
+  function normalizePitfall(item = {}) {
+    return {
+      id: String(item.id || uid("pit")),
+      pipeline: String(item.pipeline || "render"),
+      title: String(item.title || "").slice(0, 80),
+      body: String(item.body || ""),
+      relatedTaskId: String(item.relatedTaskId || "").slice(0, 24),
+      createdAt: String(item.createdAt || new Date().toISOString()),
+      updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString())
+    };
   }
 
   function loadTasks() {
@@ -61,10 +161,11 @@
   }
 
   function normalizeTask(task) {
+    const pipelineId = String(task.pipeline || "").trim() || "client";
     return {
       id: String(task.id || ""),
       title: String(task.title || ""),
-      pipeline: PIPELINES[task.pipeline] ? task.pipeline : "client",
+      pipeline: pipelineId,
       phase: PHASES.some(phase => phase.id === task.phase) ? task.phase : "M0",
       priority: ["P0", "P1", "P2"].includes(task.priority) ? task.priority : "P1",
       status: STATUSES.some(status => status.id === task.status) ? task.status : "todo",
@@ -88,7 +189,11 @@
 
   function persistLocalTasks() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), tasks: state.tasks }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        version: 2,
+        updatedAt: new Date().toISOString(),
+        tasks: state.tasks
+      }));
       if (!window.LumaCloud?.isActive()) $("#save-state").innerHTML = "<i></i>已保存到本地";
       const saveState = $("#save-state");
       clearTimeout(saveTimer);
@@ -108,10 +213,39 @@
   }
 
   function fillFormOptions() {
-    $("#task-pipeline").innerHTML = Object.entries(PIPELINES).map(([id, pipeline]) => `<option value="${id}">${pipeline.name}</option>`).join("");
+    fillPipelineSelects();
     $("#task-phase").innerHTML = PHASES.map(phase => `<option value="${phase.id}">${phase.id} · ${phase.name}</option>`).join("");
     $("#task-status").innerHTML = STATUSES.map(status => `<option value="${status.id}">${status.name}</option>`).join("");
-    $("#phase-filter").innerHTML += PHASES.map(phase => `<option value="${phase.id}">${phase.id} · ${phase.name}</option>`).join("");
+    const phaseFilter = $("#phase-filter");
+    const existing = new Set([...phaseFilter.options].map(option => option.value));
+    PHASES.forEach(phase => {
+      if (existing.has(phase.id)) return;
+      phaseFilter.insertAdjacentHTML("beforeend", `<option value="${phase.id}">${phase.id} · ${phase.name}</option>`);
+    });
+  }
+
+  function fillPipelineSelects(selectedTaskPipeline, selectedPitfallPipeline) {
+    const all = getAllPipelines();
+    const options = pipelineOrder().map(id => {
+      const pipeline = all[id];
+      const tag = pipeline.custom ? "（自定义）" : "";
+      return `<option value="${esc(id)}">${esc(pipeline.name)}${tag}</option>`;
+    }).join("");
+    $("#task-pipeline").innerHTML = `${options}<option value="${NEW_PIPELINE_VALUE}">+ 新建管线…</option>`;
+    $("#pitfall-pipeline").innerHTML = options;
+    if (selectedTaskPipeline && all[selectedTaskPipeline]) $("#task-pipeline").value = selectedTaskPipeline;
+    if (selectedPitfallPipeline && all[selectedPitfallPipeline]) $("#pitfall-pipeline").value = selectedPitfallPipeline;
+    toggleNewPipelineFields();
+  }
+
+  function toggleNewPipelineFields() {
+    const show = $("#task-pipeline").value === NEW_PIPELINE_VALUE;
+    const box = $("#new-pipeline-fields");
+    if (!box) return;
+    box.hidden = !show;
+    if (show && !$("#new-pipeline-name").value) {
+      $("#new-pipeline-name").focus();
+    }
   }
 
   function bindEvents() {
@@ -160,6 +294,7 @@
       renderTasks();
     });
     $("#task-form").addEventListener("submit", saveTaskFromForm);
+    $("#task-pipeline").addEventListener("change", toggleNewPipelineFields);
     $("#task-progress").addEventListener("input", event => {
       $("#progress-output").textContent = `${event.target.value}%`;
       const status = $("#task-status");
@@ -180,8 +315,31 @@
     $("#export-btn").addEventListener("click", exportData);
     $("#import-btn").addEventListener("click", () => $("#import-file").click());
     $("#import-file").addEventListener("change", importData);
+    $("#add-pitfall-btn").addEventListener("click", () => openPitfallDialog());
+    $("#pitfall-form").addEventListener("submit", savePitfallFromForm);
+    $("#close-pitfall-dialog").addEventListener("click", closePitfallDialog);
+    $("#cancel-pitfall-dialog").addEventListener("click", closePitfallDialog);
+    $("#delete-pitfall").addEventListener("click", deleteCurrentPitfall);
+    $("#pitfall-dialog").addEventListener("click", event => {
+      if (event.target === $("#pitfall-dialog")) closePitfallDialog();
+    });
+    $("#pitfall-pipeline-list").addEventListener("click", event => {
+      const button = event.target.closest("[data-pitfall-pipeline]");
+      if (!button) return;
+      state.pitfallPipeline = button.dataset.pitfallPipeline;
+      renderPitfalls();
+    });
+    $("#pitfalls-list").addEventListener("click", event => {
+      const edit = event.target.closest("[data-edit-pitfall]");
+      if (edit) {
+        openPitfallDialog(edit.dataset.editPitfall);
+        return;
+      }
+      const related = event.target.closest("[data-open-task]");
+      if (related) openTaskDialog(related.dataset.openTask);
+    });
     document.addEventListener("keydown", event => {
-      if (event.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName) && !$("#task-dialog").open) {
+      if (event.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName) && !$("#task-dialog").open && !$("#pitfall-dialog").open) {
         event.preventDefault();
         $("#global-search").focus();
       }
@@ -255,6 +413,7 @@
     if (view === "dashboard") renderDashboard();
     if (view === "tasks") renderTasks();
     if (view === "roadmap") renderRoadmap();
+    if (view === "guide") renderPitfalls();
   }
 
   function openTasks(pipeline = "all") {
@@ -267,6 +426,7 @@
     renderDashboard();
     renderTasks();
     renderRoadmap();
+    renderPitfalls();
     const total = state.tasks.length;
     const done = state.tasks.filter(task => task.status === "done").length;
     $("#nav-task-count").textContent = total;
@@ -280,36 +440,52 @@
     const overall = average(state.tasks.map(task => Number(task.progress)));
     const active = state.tasks.filter(task => ["doing", "review"].includes(task.status)).length;
     const done = state.tasks.filter(task => task.status === "done").length;
+    const blocked = state.tasks.filter(task => task.status === "blocked").length;
     const remaining = state.tasks.filter(task => task.status !== "done").reduce((sum, task) => sum + Number(task.estimate || 0), 0);
+    const pitfallCount = state.pitfalls.length;
     $("#dashboard-stats").innerHTML = `
-      <article class="stat-card primary-stat"><span>整体开发进度</span><div class="stat-value"><strong>${overall}</strong><small>%</small></div><div class="stat-bar"><i style="width:${overall}%"></i></div><span class="stat-aside">所有任务平均</span></article>
-      <article class="stat-card"><span>正在推进</span><div class="stat-value"><strong>${active}</strong><small>项</small></div><span class="stat-aside">含待验证任务</span></article>
+      <article class="stat-card primary-stat"><span>制作进度</span><div class="stat-value"><strong>${overall}</strong><small>%</small></div><div class="stat-bar"><i style="width:${overall}%"></i></div><span class="stat-aside">全管线任务平均</span></article>
+      <article class="stat-card"><span>正在推进</span><div class="stat-value"><strong>${active}</strong><small>项</small></div><span class="stat-aside">${blocked ? `${blocked} 项阻塞` : "含待验证"}</span></article>
       <article class="stat-card"><span>已完成</span><div class="stat-value"><strong>${done}</strong><small>/ ${total} 项</small></div><div class="stat-bar"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></div></article>
-      <article class="stat-card"><span>剩余预估工作量</span><div class="stat-value"><strong>${Math.round(remaining * 10) / 10}</strong><small>人日</small></div><span class="stat-aside">不含新增任务</span></article>`;
+      <article class="stat-card"><span>剩余人日 / 备忘</span><div class="stat-value"><strong>${Math.round(remaining * 10) / 10}</strong><small>人日</small></div><span class="stat-aside">${pitfallCount} 条开发坑点</span></article>`;
 
-    $("#pipeline-cards").innerHTML = Object.entries(PIPELINES).map(([id, pipeline]) => {
+    const budgets = typeof PRODUCTION_BUDGETS !== "undefined" ? PRODUCTION_BUDGETS : [];
+    $("#budget-cards").innerHTML = budgets.map(budget => `
+      <article class="budget-card budget-${esc(budget.id)}">
+        <span class="budget-tier">${esc(budget.name)}</span>
+        <strong>${esc(budget.target)}</strong>
+        <p><b>GI</b> ${esc(budget.gi)}</p>
+        <small>${esc(budget.note)}</small>
+      </article>`).join("");
+
+    const all = getAllPipelines();
+    const title = $("#pipeline-panel-title");
+    if (title) title.textContent = `制作管线（${pipelineOrder().length}）`;
+    $("#pipeline-cards").innerHTML = pipelineOrder().map(id => {
+      const pipeline = all[id];
       const tasks = state.tasks.filter(task => task.pipeline === id);
       const progress = average(tasks.map(task => Number(task.progress)));
       const doneCount = tasks.filter(task => task.status === "done").length;
       const activeCount = tasks.filter(task => ["doing", "review"].includes(task.status)).length;
-      return `<button class="pipeline-card" data-pipeline="${id}" style="--accent:${pipeline.color}">
-        <div class="pipeline-card-top"><span class="pipeline-icon">${pipeline.short}</span><span class="pipeline-name"><strong>${pipeline.name}</strong><small>${pipeline.en}</small></span><span class="pipeline-percent">${progress}<small>%</small></span></div>
+      const notes = state.pitfalls.filter(item => item.pipeline === id).length;
+      return `<button class="pipeline-card" data-pipeline="${esc(id)}" style="--accent:${pipeline.color}">
+        <div class="pipeline-card-top"><span class="pipeline-icon">${esc(pipeline.short)}</span><span class="pipeline-name"><strong>${esc(pipeline.name)}</strong><small>${esc(pipeline.en)}</small></span><span class="pipeline-percent">${progress}<small>%</small></span></div>
         <div class="stat-bar"><i style="width:${progress}%"></i></div>
-        <div class="pipeline-card-foot"><span>${doneCount} / ${tasks.length} 已完成</span><span>${activeCount ? `${activeCount} 项进行中` : pipeline.description}</span></div>
+        <div class="pipeline-card-foot"><span>${doneCount} / ${tasks.length} 已完成</span><span>${activeCount ? `${activeCount} 项进行中` : notes ? `${notes} 条备忘` : esc(pipeline.description)}</span></div>
       </button>`;
     }).join("");
 
     const focus = state.tasks
       .filter(task => task.status !== "done" && task.priority === "P0")
-      .sort((a, b) => PHASES.findIndex(phase => phase.id === a.phase) - PHASES.findIndex(phase => phase.id === b.phase) || ["client", "network", "render", "physics", "animation", "vfx"].indexOf(a.pipeline) - ["client", "network", "render", "physics", "animation", "vfx"].indexOf(b.pipeline) || a.id.localeCompare(b.id))
+      .sort((a, b) => PHASES.findIndex(phase => phase.id === a.phase) - PHASES.findIndex(phase => phase.id === b.phase) || pipelineOrder().indexOf(a.pipeline) - pipelineOrder().indexOf(b.pipeline) || a.id.localeCompare(b.id))
       .slice(0, 5);
-    $("#focus-list").innerHTML = focus.length ? focus.map((task, index) => `<button class="focus-item" data-task-id="${esc(task.id)}"><span class="focus-index">${String(index + 1).padStart(2, "0")}</span><span><strong>${esc(task.title)}</strong><small>${esc(task.id)} · ${phaseOf(task.phase).id} ${phaseOf(task.phase).name} · ${pipelineOf(task).name}</small></span>${icon("chevron")}</button>`).join("") : `<div class="empty-mini">当前没有待推进的 P0 任务。<br>可以进入下一阶段，或新建一个目标。</div>`;
+    $("#focus-list").innerHTML = focus.length ? focus.map((task, index) => `<button class="focus-item" data-task-id="${esc(task.id)}"><span class="focus-index">${String(index + 1).padStart(2, "0")}</span><span><strong>${esc(task.title)}</strong><small>${esc(task.id)} · ${phaseOf(task.phase).id} ${esc(phaseOf(task.phase).name)} · ${esc(pipelineOf(task).name)}</small></span>${icon("chevron")}</button>`).join("") : `<div class="empty-mini">当前没有待推进的 P0 任务<br>可以进入下一阶段，或新建一个目标。</div>`;
 
     $("#mini-roadmap").innerHTML = PHASES.map(phase => {
       const tasks = state.tasks.filter(task => task.phase === phase.id);
       const isDone = tasks.length && tasks.every(task => task.status === "done");
       const isActive = !isDone && tasks.some(task => task.progress > 0 || task.status !== "todo");
-      return `<div class="mini-phase${isDone ? " done" : ""}${isActive ? " active" : ""}"><span class="mini-dot"></span><strong>${phase.id} · ${phase.name}</strong><small>${tasks.filter(task => task.status === "done").length} / ${tasks.length} 项完成</small></div>`;
+      return `<div class="mini-phase${isDone ? " done" : ""}${isActive ? " active" : ""}"><span class="mini-dot"></span><strong>${phase.id} · ${esc(phase.name)}</strong><small>${tasks.filter(task => task.status === "done").length} / ${tasks.length} · 闸门</small></div>`;
     }).join("");
   }
 
@@ -325,9 +501,11 @@
   }
 
   function renderTasks() {
-    $("#pipeline-filters").innerHTML = [`<button class="filter-pill${state.pipeline === "all" ? " active" : ""}" data-filter-pipeline="all">全部管线 <b>${state.tasks.length}</b></button>`, ...Object.entries(PIPELINES).map(([id, pipeline]) => {
+    const all = getAllPipelines();
+    $("#pipeline-filters").innerHTML = [`<button class="filter-pill${state.pipeline === "all" ? " active" : ""}" data-filter-pipeline="all">全部管线 <b>${state.tasks.length}</b></button>`, ...pipelineOrder().map(id => {
+      const pipeline = all[id];
       const count = state.tasks.filter(task => task.pipeline === id).length;
-      return `<button class="filter-pill${state.pipeline === id ? " active" : ""}" data-filter-pipeline="${id}" style="--accent:${pipeline.color}"><i></i>${pipeline.name}<b>${count}</b></button>`;
+      return `<button class="filter-pill${state.pipeline === id ? " active" : ""}" data-filter-pipeline="${esc(id)}" style="--accent:${pipeline.color}"><i></i>${esc(pipeline.name)}<b>${count}</b></button>`;
     })].join("");
     $("#phase-filter").value = state.phase;
     $("#priority-filter").value = state.priority;
@@ -352,7 +530,7 @@
     return `<article class="task-card" draggable="true" data-task-id="${esc(task.id)}" style="--accent:${pipeline.color}">
       <div class="task-card-top"><span class="task-id">${esc(task.id)}</span><span class="priority ${task.priority}">${task.priority}</span></div>
       <h3>${esc(task.title)}</h3>
-      <span class="card-pipeline"><i></i>${pipeline.name} · ${task.phase}</span>
+      <span class="card-pipeline"><i></i>${esc(pipeline.name)} · ${task.phase}</span>
       <div class="card-progress"><div class="stat-bar"><i style="width:${task.progress}%"></i></div><small>${task.progress}%</small></div>
       <button class="complete-btn" data-complete-id="${esc(task.id)}" title="${task.status === "done" ? "重新打开" : "标记完成"}">${icon("check")}</button>
       <div class="task-card-foot"><span>${icon("clock")}${esc(due)}</span><span>${task.priority === "P0" ? "核心路径" : task.priority === "P1" ? "重要功能" : "增强功能"}</span></div>
@@ -374,7 +552,7 @@
     $("#task-list").innerHTML = `<table class="task-table"><thead><tr><th>编号</th><th>任务</th><th>管线 / 阶段</th><th>优先级</th><th>状态</th><th>进度</th><th>预估</th></tr></thead><tbody>${tasks.map(task => {
       const pipeline = pipelineOf(task);
       const status = statusOf(task.status);
-      return `<tr data-task-id="${esc(task.id)}"><td><span class="task-id">${esc(task.id)}</span></td><td>${esc(task.title)}</td><td><span class="table-pipeline" style="--accent:${pipeline.color}"><i></i>${pipeline.name} · ${task.phase}</span></td><td><span class="priority ${task.priority}">${task.priority}</span></td><td><span class="status-chip" style="--status-color:${status.color}">${status.name}</span></td><td><div class="table-progress"><div class="stat-bar"><i style="width:${task.progress}%;background:${pipeline.color}"></i></div><span>${task.progress}%</span></div></td><td>${task.estimate} 人日</td></tr>`;
+      return `<tr data-task-id="${esc(task.id)}"><td><span class="task-id">${esc(task.id)}</span></td><td>${esc(task.title)}</td><td><span class="table-pipeline" style="--accent:${pipeline.color}"><i></i>${esc(pipeline.name)} · ${task.phase}</span></td><td><span class="priority ${task.priority}">${task.priority}</span></td><td><span class="status-chip" style="--status-color:${status.color}">${status.name}</span></td><td><div class="table-progress"><div class="stat-bar"><i style="width:${task.progress}%;background:${pipeline.color}"></i></div><span>${task.progress}%</span></div></td><td>${task.estimate} 人日</td></tr>`;
     }).join("")}</tbody></table>`;
   }
 
@@ -382,12 +560,36 @@
     $("#roadmap").innerHTML = PHASES.map(phase => {
       const tasks = state.tasks.filter(task => task.phase === phase.id);
       const progress = average(tasks.map(task => Number(task.progress)));
-      return `<section class="phase-column"><div class="phase-header"><div class="phase-num"><span>${phase.id} / ${phase.en}</span><b>${tasks.length} 项</b></div><h2>${phase.name}</h2><p>${phase.goal}</p><div class="phase-progress"><div class="stat-bar"><i style="width:${progress}%"></i></div><small>${progress}%</small></div></div><div class="phase-body"><div class="phase-gate"><strong>阶段出口条件</strong>${phase.gate}</div><div class="phase-tasks">${tasks.slice(0, 6).map(task => `<button class="phase-task${task.status === "done" ? " done" : ""}" data-task-id="${esc(task.id)}"><i></i><span>${esc(task.title)}</span></button>`).join("")}${tasks.length > 6 ? `<button class="phase-more" data-phase-more="${phase.id}">查看其余 ${tasks.length - 6} 项任务 →</button>` : ""}</div></div></section>`;
+      return `<section class="phase-column"><div class="phase-header"><div class="phase-num"><span>${phase.id} / ${phase.en}</span><b>${tasks.length} 项</b></div><h2>${esc(phase.name)}</h2><p>${esc(phase.goal)}</p><div class="phase-progress"><div class="stat-bar"><i style="width:${progress}%"></i></div><small>${progress}%</small></div></div><div class="phase-body"><div class="phase-gate"><strong>阶段出口条件</strong>${esc(phase.gate)}</div><div class="phase-tasks">${tasks.slice(0, 6).map(task => `<button class="phase-task${task.status === "done" ? " done" : ""}" data-task-id="${esc(task.id)}"><i></i><span>${esc(task.title)}</span></button>`).join("")}${tasks.length > 6 ? `<button class="phase-more" data-phase-more="${phase.id}">查看其余 ${tasks.length - 6} 项任务 →</button>` : ""}</div></div></section>`;
     }).join("");
   }
 
-  function renderStaticContent() {
-    $("#workflow-steps").innerHTML = WORKFLOW.map((step, index) => `<article class="workflow-step"><span>0${index + 1}</span><strong>${step.name}</strong><p>${step.text}</p></article>`).join("");
+  function renderPitfalls() {
+    const all = getAllPipelines();
+    if (!all[state.pitfallPipeline]) state.pitfallPipeline = pipelineOrder()[0] || "render";
+    $("#pitfall-pipeline-list").innerHTML = pipelineOrder().map(id => {
+      const pipeline = all[id];
+      const count = state.pitfalls.filter(item => item.pipeline === id).length;
+      return `<button class="pitfall-pipeline-item${state.pitfallPipeline === id ? " active" : ""}" data-pitfall-pipeline="${esc(id)}" style="--accent:${pipeline.color}"><span class="pipeline-icon">${esc(pipeline.short)}</span><span><strong>${esc(pipeline.name)}</strong><small>${count} 条备忘</small></span></button>`;
+    }).join("");
+    const pipeline = pipelineOf(state.pitfallPipeline);
+    $("#pitfall-pipeline-heading").textContent = pipeline.name;
+    const notes = state.pitfalls
+      .filter(item => item.pipeline === state.pitfallPipeline)
+      .sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
+    $("#pitfall-count").textContent = `${notes.length} 条`;
+    if (!notes.length) {
+      $("#pitfalls-list").innerHTML = `<div class="empty-state pitfalls-empty">这条管线还没有备忘。<br>开发结束后点右上角「记录新坑」，给后续 agent / 自己留下记忆。</div>`;
+      return;
+    }
+    $("#pitfalls-list").innerHTML = notes.map(note => `
+      <article class="pitfall-card" style="--accent:${pipeline.color}">
+        <div class="pitfall-card-top">
+          <div><h3>${esc(note.title)}</h3><small>${formatDateTime(note.updatedAt || note.createdAt)}${note.relatedTaskId ? ` · <button type="button" class="linkish" data-open-task="${esc(note.relatedTaskId)}">${esc(note.relatedTaskId)}</button>` : ""}</small></div>
+          <button type="button" class="secondary-btn compact-btn" data-edit-pitfall="${esc(note.id)}">编辑</button>
+        </div>
+        <pre class="pitfall-body">${esc(note.body)}</pre>
+      </article>`).join("");
   }
 
   function openTaskDialog(id = "") {
@@ -395,11 +597,12 @@
     const task = id ? state.tasks.find(item => item.id === id) : null;
     if (id && !task) return;
     $("#task-form").reset();
+    fillPipelineSelects(task?.pipeline || (state.pipeline !== "all" ? state.pipeline : "client"));
     $("#task-id").value = task?.id || "";
     $("#dialog-kicker").textContent = task ? `EDIT TASK / ${task.id}` : "NEW TASK";
     $("#dialog-title").textContent = task ? "编辑开发任务" : "新建开发任务";
     $("#task-title").value = task?.title || "";
-    $("#task-pipeline").value = task?.pipeline || (state.pipeline !== "all" ? state.pipeline : "client");
+    $("#task-pipeline").value = task?.pipeline || (state.pipeline !== "all" && getAllPipelines()[state.pipeline] ? state.pipeline : "client");
     $("#task-phase").value = task?.phase || (state.phase !== "all" ? state.phase : "M0");
     $("#task-priority").value = task?.priority || "P1";
     $("#task-status").value = task?.status || "todo";
@@ -409,6 +612,11 @@
     $("#task-deliverable").value = task?.deliverable || "";
     $("#task-acceptance").value = task?.acceptance || "";
     $("#task-dependencies").value = task?.dependencies || "";
+    $("#new-pipeline-name").value = "";
+    $("#new-pipeline-short").value = "";
+    $("#new-pipeline-en").value = "";
+    $("#new-pipeline-color").value = "#6b8f71";
+    toggleNewPipelineFields();
     setFormProgress(task?.progress || 0);
     $("#delete-task").hidden = !task;
     $("#task-dialog").showModal();
@@ -424,15 +632,43 @@
     $("#progress-output").textContent = `${value}%`;
   }
 
+  function createPipelineFromForm() {
+    const name = $("#new-pipeline-name").value.trim();
+    if (!name) {
+      toast("请填写新管线名称");
+      $("#new-pipeline-name").focus();
+      return null;
+    }
+    const id = slugifyPipelineId(name);
+    const short = ($("#new-pipeline-short").value.trim() || name).slice(0, 2);
+    const en = ($("#new-pipeline-en").value.trim() || name).toUpperCase();
+    const color = $("#new-pipeline-color").value || "#6b8f71";
+    state.customPipelines[id] = normalizePipeline(id, {
+      name,
+      short,
+      en,
+      color,
+      description: "自定义制作管线"
+    });
+    persistCustomPipelines();
+    fillPipelineSelects(id, state.pitfallPipeline);
+    return id;
+  }
+
   function saveTaskFromForm(event) {
     event.preventDefault();
     if (!ensureCanEdit()) return;
+    let pipelineValue = $("#task-pipeline").value;
+    if (pipelineValue === NEW_PIPELINE_VALUE) {
+      pipelineValue = createPipelineFromForm();
+      if (!pipelineValue) return;
+    }
     const id = $("#task-id").value;
     const existing = state.tasks.find(task => task.id === id);
     const nextTask = normalizeTask({
-      id: id || `U-${(globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`).toUpperCase()}`, 
+      id: id || `U-${(globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`).toUpperCase()}`,
       title: $("#task-title").value.trim(),
-      pipeline: $("#task-pipeline").value,
+      pipeline: pipelineValue,
       phase: $("#task-phase").value,
       priority: $("#task-priority").value,
       status: $("#task-status").value,
@@ -466,8 +702,73 @@
     toast("任务已删除");
   }
 
+  function openPitfallDialog(id = "") {
+    const note = id ? state.pitfalls.find(item => item.id === id) : null;
+    if (id && !note) return;
+    fillPipelineSelects($("#task-pipeline").value, note?.pipeline || state.pitfallPipeline);
+    $("#pitfall-form").reset();
+    $("#pitfall-id").value = note?.id || "";
+    $("#pitfall-dialog-kicker").textContent = note ? `EDIT / ${note.id}` : "NEW PITFALL";
+    $("#pitfall-dialog-title").textContent = note ? "编辑开发备忘" : "记录开发坑点";
+    $("#pitfall-title").value = note?.title || "";
+    $("#pitfall-pipeline").value = note?.pipeline || state.pitfallPipeline;
+    $("#pitfall-task").value = note?.relatedTaskId || "";
+    $("#pitfall-body").value = note?.body || "";
+    $("#delete-pitfall").hidden = !note;
+    $("#pitfall-dialog").showModal();
+    requestAnimationFrame(() => $("#pitfall-title").focus());
+  }
+
+  function closePitfallDialog() {
+    $("#pitfall-dialog").close();
+  }
+
+  function savePitfallFromForm(event) {
+    event.preventDefault();
+    const id = $("#pitfall-id").value;
+    const existing = state.pitfalls.find(item => item.id === id);
+    const next = normalizePitfall({
+      id: id || uid("pit"),
+      title: $("#pitfall-title").value.trim(),
+      pipeline: $("#pitfall-pipeline").value,
+      relatedTaskId: $("#pitfall-task").value.trim(),
+      body: $("#pitfall-body").value.trim(),
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    if (!next.title || !next.body) {
+      toast("标题和说明都要填写");
+      return;
+    }
+    if (existing) Object.assign(existing, next);
+    else state.pitfalls.push(next);
+    state.pitfallPipeline = next.pipeline;
+    persistPitfalls();
+    renderAll();
+    closePitfallDialog();
+    toast(existing ? "备忘已更新" : "备忘已记录");
+  }
+
+  function deleteCurrentPitfall() {
+    const id = $("#pitfall-id").value;
+    const note = state.pitfalls.find(item => item.id === id);
+    if (!note || !window.confirm(`确定删除备忘“${note.title}”吗？`)) return;
+    state.pitfalls = state.pitfalls.filter(item => item.id !== id);
+    persistPitfalls();
+    renderAll();
+    closePitfallDialog();
+    toast("备忘已删除");
+  }
+
   function exportData() {
-    const payload = { app: "LUMA Game Production", version: 1, exportedAt: new Date().toISOString(), tasks: state.tasks };
+    const payload = {
+      app: "LUMA Game Production",
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      tasks: state.tasks,
+      pipelines: state.customPipelines,
+      pitfalls: state.pitfalls
+    };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -477,7 +778,7 @@
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast("备份已导出");
+    toast("备份已导出（含管线与备忘）");
   }
 
   function importData(event) {
@@ -491,8 +792,20 @@
         if (!Array.isArray(data.tasks)) throw new Error("备份中缺少 tasks 数组");
         const imported = data.tasks.map(normalizeTask).filter(task => task.id && task.title);
         if (!imported.length) throw new Error("备份中没有有效任务");
-        if (!window.confirm(`将用备份中的 ${imported.length} 项任务替换当前 ${state.tasks.length} 项任务。建议先导出当前数据，是否继续？`)) return;
+        if (!window.confirm(`将用备份中的 ${imported.length} 项任务替换当前 ${state.tasks.length} 项任务，并合并自定义管线 / 开发备忘。建议先导出当前数据，是否继续？`)) return;
+        if (data.pipelines && typeof data.pipelines === "object") {
+          Object.entries(data.pipelines).forEach(([id, pipeline]) => {
+            if (PIPELINES[id]) return;
+            state.customPipelines[id] = normalizePipeline(id, pipeline);
+          });
+          persistCustomPipelines();
+        }
+        if (Array.isArray(data.pitfalls)) {
+          state.pitfalls = data.pitfalls.map(normalizePitfall).filter(item => item.id && item.title);
+          persistPitfalls();
+        }
         state.tasks = imported;
+        fillPipelineSelects();
         saveTasks({ type: "replace", tasks: imported });
         renderAll();
         toast(`已导入 ${imported.length} 项任务`);
@@ -508,6 +821,12 @@
     const date = new Date(`${dateString}T00:00:00`);
     if (Number.isNaN(date.getTime())) return dateString;
     return `${date.getMonth() + 1}月${date.getDate()}日`;
+  }
+
+  function formatDateTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value || "";
+    return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Shanghai" }).format(date);
   }
 
   function toast(message) {
