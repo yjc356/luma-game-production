@@ -1,4 +1,4 @@
 window.LUMA_CONFIG = {
-  SUPABASE_URL: "",
-  SUPABASE_ANON_KEY: ""
+  SUPABASE_URL: "https://fwbghrpsrrbmxkqyhqqg.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3YmdocnBzcnJibXhrcXlocXFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQwNTk2NDAsImV4cCI6MjEwOTYzNTY0MH0.Gm_XeR9Em8Rxaz0qX8dbk8WOXrEe02olyvuN90oStgI"
 };
