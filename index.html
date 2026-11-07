@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111714">
+  <title>LUMA · 游戏开发控制台</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <svg class="svg-defs" aria-hidden="true">
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-board" viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/></symbol>
+    <symbol id="i-road" viewBox="0 0 24 24"><path d="M6 3v18M18 3v18M6 7h12M6 17h12"/><circle cx="12" cy="12" r="2"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v17H6.5A2.5 2.5 0 0 0 4 22zM20 5.5A2.5 2.5 0 0 0 17.5 3H13v17h4.5A2.5 2.5 0 0 1 20 22z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 20h16"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m-5 5 5-5 5 5M4 20h16"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m3 0-1 14H7L6 7m4 4v6m4-6v6"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></symbol>
+  </svg>
+
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#dashboard" aria-label="返回总览">
+        <span class="brand-mark"><i></i><i></i><i></i></span>
+        <span><strong>LUMA</strong><small>GAME PRODUCTION</small></span>
+      </a>
+      <nav class="main-nav" aria-label="主导航">
+        <span class="nav-label">工作空间</span>
+        <button class="nav-item active" data-view="dashboard"><svg><use href="#i-grid"/></svg><span>开发总览</span></button>
+        <button class="nav-item" data-view="tasks"><svg><use href="#i-board"/></svg><span>任务看板</span><b id="nav-task-count">0</b></button>
+        <button class="nav-item" data-view="roadmap"><svg><use href="#i-road"/></svg><span>开发路线</span></button>
+        <button class="nav-item" data-view="guide"><svg><use href="#i-book"/></svg><span>流程与规范</span></button>
+      </nav>
+      <div class="sidebar-project">
+        <div class="project-top"><span class="project-dot"></span><span>当前项目</span><span class="engine-tag">UE 5.8</span></div>
+        <strong>PROJECT / 01</strong>
+        <p>3D 游戏 · 可扩展多人架构</p>
+        <div class="project-progress"><span id="side-progress"></span></div>
+        <small><span id="side-done">0</span> / <span id="side-total">0</span> 项任务完成</small>
+      </div>
+      <div class="sidebar-bottom">
+        <button id="export-btn"><svg><use href="#i-download"/></svg>导出备份</button>
+        <button id="import-btn"><svg><use href="#i-upload"/></svg>导入备份</button>
+        <input id="import-file" type="file" accept="application/json" hidden>
+        <span>本地 / 云端双模式</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="mobile-brand" data-view="dashboard" aria-label="总览"><span class="brand-mark"><i></i><i></i><i></i></span></button>
+        <div class="global-search"><svg><use href="#i-search"/></svg><input id="global-search" type="search" placeholder="搜索任务、交付物或编号…" autocomplete="off"><kbd>/</kbd></div>
+        <div class="topbar-actions">
+          <span class="save-state" id="save-state"><i></i>已保存到本地</span>
+          <button class="collab-btn" id="collab-btn" title="团队协作与云端同步"><i></i><span>本地模式</span></button>
+          <button class="primary-btn" id="add-task-btn"><svg><use href="#i-plus"/></svg>新建任务</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <section id="view-dashboard" class="view active" aria-labelledby="dashboard-title">
+          <div class="page-heading dashboard-heading">
+            <div><p class="eyebrow">PRODUCTION OVERVIEW</p><h1 id="dashboard-title">从画面表现，到完整游戏。</h1><p>把创意拆成可交付、可验证的开发步骤。</p></div>
+            <div class="date-block"><span id="today-date"></span><small>独立开发工作台</small></div>
+          </div>
+          <div id="dashboard-stats" class="stats-grid"></div>
+          <div class="dashboard-grid">
+            <section class="panel pipeline-panel">
+              <div class="panel-heading"><div><span class="section-kicker">PRODUCTION PIPELINES</span><h2>五大开发管线</h2></div><button class="text-btn" data-go-tasks="all">查看全部<svg><use href="#i-arrow"/></svg></button></div>
+              <div id="pipeline-cards" class="pipeline-cards"></div>
+            </section>
+            <aside class="panel focus-panel">
+              <div class="panel-heading"><div><span class="section-kicker">NEXT UP</span><h2>建议优先推进</h2></div></div>
+              <p class="panel-intro">优先完成架构与可玩闭环，避免后期返工。</p>
+              <div id="focus-list" class="focus-list"></div>
+            </aside>
+          </div>
+          <section class="panel sprint-panel">
+            <div class="panel-heading"><div><span class="section-kicker">DELIVERY SEQUENCE</span><h2>当前交付节奏</h2></div><button class="text-btn" data-view-link="roadmap">完整路线<svg><use href="#i-arrow"/></svg></button></div>
+            <div id="mini-roadmap" class="mini-roadmap"></div>
+          </section>
+        </section>
+
+        <section id="view-tasks" class="view" aria-labelledby="tasks-title">
+          <div class="page-heading compact-heading">
+            <div><p class="eyebrow">TASK MANAGEMENT</p><h1 id="tasks-title">任务看板</h1><p>点击卡片编辑详情，拖动卡片可更新状态。</p></div>
+            <div class="view-toggle" role="group" aria-label="任务布局"><button class="active" data-layout="board" title="看板视图"><svg><use href="#i-board"/></svg></button><button data-layout="list" title="列表视图"><svg><use href="#i-list"/></svg></button></div>
+          </div>
+          <div class="task-toolbar">
+            <div id="pipeline-filters" class="filter-pills"></div>
+            <div class="toolbar-right"><select id="phase-filter" aria-label="按阶段筛选"><option value="all">全部阶段</option></select><select id="priority-filter" aria-label="按优先级筛选"><option value="all">全部优先级</option><option value="P0">P0 · 必须</option><option value="P1">P1 · 重要</option><option value="P2">P2 · 增强</option></select></div>
+          </div>
+          <div id="active-search" class="active-search" hidden></div>
+          <div id="task-board" class="task-board"></div>
+          <div id="task-list" class="task-list-wrap" hidden></div>
+        </section>
+
+        <section id="view-roadmap" class="view" aria-labelledby="roadmap-title">
+          <div class="page-heading compact-heading"><div><p class="eyebrow">DEVELOPMENT ROADMAP</p><h1 id="roadmap-title">从原型到发布</h1><p>阶段是质量门槛，不是死板的日历；达标后再进入下一阶段。</p></div></div>
+          <div id="roadmap" class="roadmap"></div>
+          <div class="roadmap-note"><svg><use href="#i-info"/></svg><p><strong>关键原则：</strong>联机能力不要留到最后。先以权威服务器边界完成原型，再在 M2 用真实双端验证，能显著减少移动、战斗、物品与动画系统的返工。</p></div>
+        </section>
+
+        <section id="view-guide" class="view" aria-labelledby="guide-title">
+          <div class="page-heading compact-heading"><div><p class="eyebrow">WORKFLOW & DEFINITION OF DONE</p><h1 id="guide-title">流程与规范</h1><p>给每项功能同一条从需求到验收的路径。</p></div></div>
+          <div class="guide-hero"><span>ONE FEATURE · FULL LOOP</span><h2>需求不是完成，稳定交付才是。</h2><p>每个功能都要经过实现、调试、性能验证、联机检查与内容接入，而不是只在编辑器里运行一次。</p></div>
+          <div id="workflow-steps" class="workflow-steps"></div>
+          <div class="guide-columns">
+            <section class="panel"><div class="panel-heading"><div><span class="section-kicker">DEFINITION OF DONE</span><h2>任务完成标准</h2></div></div><ul class="check-list"><li>功能在独立运行包或目标运行方式中验证，不只停留在 PIE。</li><li>交付物、参数和接入方式清楚，其他模块可以复用。</li><li>正常流程、边界条件和失败流程均有验证。</li><li>达到对应平台与质量档位的性能预算，无持续报错。</li><li>涉及 gameplay 的功能已验证客户端、服务器与断线场景。</li><li>任务进度、验收记录和遗留风险已更新。</li></ul></section>
+            <section class="panel"><div class="panel-heading"><div><span class="section-kicker">WORKING AGREEMENT</span><h2>独立开发建议</h2></div></div><div class="agreement-list"><div><b>01</b><p><strong>保持一个小闭环</strong><span>每个迭代只交付一个可玩的完整能力。</span></p></div><div><b>02</b><p><strong>先灰盒，再精品化</strong><span>玩法、网络与性能先成立，再投入高成本美术。</span></p></div><div><b>03</b><p><strong>以数据决定技术选型</strong><span>Lumen、Niagara、GAS 等均通过目标场景验证。</span></p></div><div><b>04</b><p><strong>每周导出一次备份</strong><span>本地模式保存在浏览器中；云端模式也会保留本地副本，仍建议定期导出。</span></p></div></div></section>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="task-dialog" class="task-dialog">
+    <form id="task-form">
+      <div class="dialog-header"><div><span class="section-kicker" id="dialog-kicker">NEW TASK</span><h2 id="dialog-title">新建开发任务</h2></div><button type="button" class="icon-btn" id="close-dialog" aria-label="关闭"><svg><use href="#i-close"/></svg></button></div>
+      <div class="dialog-body">
+        <input type="hidden" id="task-id">
+        <label class="field full"><span>任务名称 <b>*</b></span><input id="task-title" required maxlength="80" placeholder="例如：建立角色基础移动动画"></label>
+        <div class="form-grid">
+          <label class="field"><span>所属管线</span><select id="task-pipeline"></select></label>
+          <label class="field"><span>开发阶段</span><select id="task-phase"></select></label>
+          <label class="field"><span>优先级</span><select id="task-priority"><option value="P0">P0 · 必须</option><option value="P1">P1 · 重要</option><option value="P2">P2 · 增强</option></select></label>
+          <label class="field"><span>当前状态</span><select id="task-status"></select></label>
+          <label class="field"><span>预估工作量（人日）</span><input id="task-estimate" type="number" min="0" max="999" step="0.5" value="1"></label>
+          <label class="field"><span>计划完成日期</span><input id="task-due" type="date"></label>
+        </div>
+        <label class="field full range-field"><span>开发进度 <output id="progress-output">0%</output></span><input id="task-progress" type="range" min="0" max="100" step="5" value="0"></label>
+        <label class="field full"><span>功能说明</span><textarea id="task-description" rows="3" placeholder="要做什么，为什么需要它"></textarea></label>
+        <label class="field full"><span>交付物</span><textarea id="task-deliverable" rows="2" placeholder="例如：可复用蓝图、插件模块、测试关卡"></textarea></label>
+        <label class="field full"><span>验收标准</span><textarea id="task-acceptance" rows="3" placeholder="用可以实际验证的条件描述完成状态"></textarea></label>
+        <label class="field full"><span>前置依赖 / 备注</span><input id="task-dependencies" maxlength="160" placeholder="例如：C-04；需要目标平台性能数据"></label>
+      </div>
+      <div class="dialog-footer"><button type="button" class="danger-btn" id="delete-task" hidden><svg><use href="#i-trash"/></svg>删除</button><span></span><button type="button" class="secondary-btn" id="cancel-dialog">取消</button><button type="submit" class="primary-btn">保存任务</button></div>
+    </form>
+  </dialog>
+  <dialog id="cloud-dialog" class="task-dialog cloud-dialog">
+    <div class="dialog-header"><div><span class="section-kicker">TEAM COLLABORATION</span><h2>团队协作与云端同步</h2></div><button type="button" class="icon-btn" id="close-cloud-dialog" aria-label="关闭"><svg><use href="#i-close"/></svg></button></div>
+    <div class="dialog-body" id="cloud-dialog-body"></div>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="data.js"></script>
+  <script src="config.js"></script>
+  <script src="collaboration.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
