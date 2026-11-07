@@ -50,15 +50,21 @@
     loadCustomPipelines();
     loadPitfalls();
     loadTasks();
+    const seeded = mergeSeedTasks({ persist: true, cloud: false });
     fillFormOptions();
     bindEvents();
     $("#today-date").textContent = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date());
     renderAll();
     window.LumaCloud.init({
       getLocalTasks: () => state.tasks,
-      onRemoteTasks: applyCloudTasks,
+      onRemoteTasks: tasks => {
+        applyCloudTasks(tasks);
+        const added = mergeSeedTasks({ persist: true, cloud: true });
+        if (added.length) toast(`已合并 ${added.length} 项新默认任务到看板`);
+      },
       onError: toast
     }).catch(error => toast(`协作功能初始化失败：${error.message}`));
+    if (seeded.length) toast(`已加入 ${seeded.length} 项新管线默认任务`);
   }
 
   function applyCloudTasks(tasks) {
@@ -122,6 +128,7 @@
       const saved = JSON.parse(localStorage.getItem(PITFALLS_KEY));
       if (saved && Array.isArray(saved.pitfalls)) {
         state.pitfalls = saved.pitfalls.map(normalizePitfall).filter(item => item.id && item.title);
+        mergeDefaultPitfalls();
         return;
       }
     } catch (error) {
@@ -129,6 +136,19 @@
     }
     state.pitfalls = (typeof DEFAULT_PITFALLS !== "undefined" ? DEFAULT_PITFALLS : []).map(item => ({ ...item }));
     persistPitfalls();
+  }
+
+  function mergeDefaultPitfalls() {
+    const defaults = typeof DEFAULT_PITFALLS !== "undefined" ? DEFAULT_PITFALLS : [];
+    const existing = new Set(state.pitfalls.map(item => item.id));
+    let changed = false;
+    defaults.forEach(item => {
+      if (!item?.id || existing.has(item.id)) return;
+      state.pitfalls.push({ ...item });
+      existing.add(item.id);
+      changed = true;
+    });
+    if (changed) persistPitfalls();
   }
 
   function persistPitfalls() {
@@ -158,6 +178,26 @@
       console.warn("无法读取本地任务数据，已载入默认任务。", error);
     }
     state.tasks = DEFAULT_TASKS.map(task => ({ ...task }));
+  }
+
+  function mergeSeedTasks({ persist = true, cloud = false } = {}) {
+    const existing = new Set(state.tasks.map(task => task.id));
+    const added = [];
+    DEFAULT_TASKS.forEach(seed => {
+      if (!seed?.id || existing.has(seed.id)) return;
+      const task = normalizeTask({ ...seed });
+      state.tasks.push(task);
+      existing.add(task.id);
+      added.push(task);
+    });
+    if (!added.length) return [];
+    if (persist) persistLocalTasks();
+    if (cloud && window.LumaCloud?.isActive?.() && window.LumaCloud.canEdit()) {
+      added.forEach(task => {
+        window.LumaCloud.commit({ type: "upsert", task }).catch(error => toast(error.message));
+      });
+    }
+    return added.map(task => task.id);
   }
 
   function normalizeTask(task) {
@@ -268,6 +308,20 @@
     $("#task-board").addEventListener("click", handleTaskClick);
     $("#task-list").addEventListener("click", handleTaskClick);
     $("#focus-list").addEventListener("click", handleTaskClick);
+    $("#mini-roadmap").addEventListener("click", handleTaskClick);
+    const studio = $("#studio-checklist");
+    if (studio) {
+      studio.addEventListener("click", event => {
+        const link = event.target.closest("[data-view-link]");
+        if (link) {
+          event.preventDefault();
+          showView(link.dataset.viewLink);
+          return;
+        }
+        const taskButton = event.target.closest("[data-task-id]");
+        if (taskButton && taskButton.dataset.taskId) openTaskDialog(taskButton.dataset.taskId);
+      });
+    }
     $("#roadmap").addEventListener("click", event => {
       const taskButton = event.target.closest("[data-task-id]");
       if (taskButton) openTaskDialog(taskButton.dataset.taskId);
@@ -479,13 +533,19 @@
       .filter(task => task.status !== "done" && task.priority === "P0")
       .sort((a, b) => PHASES.findIndex(phase => phase.id === a.phase) - PHASES.findIndex(phase => phase.id === b.phase) || pipelineOrder().indexOf(a.pipeline) - pipelineOrder().indexOf(b.pipeline) || a.id.localeCompare(b.id))
       .slice(0, 5);
-    $("#focus-list").innerHTML = focus.length ? focus.map((task, index) => `<button class="focus-item" data-task-id="${esc(task.id)}"><span class="focus-index">${String(index + 1).padStart(2, "0")}</span><span><strong>${esc(task.title)}</strong><small>${esc(task.id)} · ${phaseOf(task.phase).id} ${esc(phaseOf(task.phase).name)} · ${esc(pipelineOf(task).name)}</small></span>${icon("chevron")}</button>`).join("") : `<div class="empty-mini">当前没有待推进的 P0 任务<br>可以进入下一阶段，或新建一个目标。</div>`;
+    $("#focus-list").innerHTML = focus.length ? focus.map((task, index) => `<button class="focus-item" data-task-id="${esc(task.id)}"><span class="focus-index">${String(index + 1).padStart(2, "0")}</span><span><strong>${esc(task.title)}</strong><small>${esc(task.id)} · ${phaseOf(task.phase).id} ${esc(phaseOf(task.phase).name)} · ${esc(pipelineOf(task).name)}</small></span>${icon("chevron")}</button>`).join("") : `<div class="empty-mini">当前没有待推进的 P0 任务<br>可以去制作清单挑一项，或新建小需求。</div>`;
 
-    $("#mini-roadmap").innerHTML = PHASES.map(phase => {
-      const tasks = state.tasks.filter(task => task.phase === phase.id);
-      const isDone = tasks.length && tasks.every(task => task.status === "done");
-      const isActive = !isDone && tasks.some(task => task.progress > 0 || task.status !== "todo");
-      return `<div class="mini-phase${isDone ? " done" : ""}${isActive ? " active" : ""}"><span class="mini-dot"></span><strong>${phase.id} · ${esc(phase.name)}</strong><small>${tasks.filter(task => task.status === "done").length} / ${tasks.length} · 闸门</small></div>`;
+    const checklist = typeof STUDIO_CHECKLIST !== "undefined" ? STUDIO_CHECKLIST : [];
+    const flat = checklist.flatMap(group => group.items.map(item => ({ ...item, group: group.group })));
+    $("#mini-roadmap").innerHTML = flat.slice(0, 6).map(item => {
+      const linked = item.taskHint ? state.tasks.find(task => task.id === item.taskHint) : null;
+      const done = linked ? linked.status === "done" : false;
+      const progress = linked ? Number(linked.progress || 0) : 0;
+      return `<button class="mini-check${done ? " done" : ""}${progress && !done ? " active" : ""}" data-task-id="${esc(linked?.id || "")}" ${linked ? "" : "disabled"}>
+        <span class="mini-dot"></span>
+        <strong>${esc(item.title)}</strong>
+        <small>${linked ? `${esc(linked.id)} · ${progress}%` : "见制作清单"}</small>
+      </button>`;
     }).join("");
   }
 
@@ -557,11 +617,33 @@
   }
 
   function renderRoadmap() {
-    $("#roadmap").innerHTML = PHASES.map(phase => {
-      const tasks = state.tasks.filter(task => task.phase === phase.id);
-      const progress = average(tasks.map(task => Number(task.progress)));
-      return `<section class="phase-column"><div class="phase-header"><div class="phase-num"><span>${phase.id} / ${phase.en}</span><b>${tasks.length} 项</b></div><h2>${esc(phase.name)}</h2><p>${esc(phase.goal)}</p><div class="phase-progress"><div class="stat-bar"><i style="width:${progress}%"></i></div><small>${progress}%</small></div></div><div class="phase-body"><div class="phase-gate"><strong>阶段出口条件</strong>${esc(phase.gate)}</div><div class="phase-tasks">${tasks.slice(0, 6).map(task => `<button class="phase-task${task.status === "done" ? " done" : ""}" data-task-id="${esc(task.id)}"><i></i><span>${esc(task.title)}</span></button>`).join("")}${tasks.length > 6 ? `<button class="phase-more" data-phase-more="${phase.id}">查看其余 ${tasks.length - 6} 项任务 →</button>` : ""}</div></div></section>`;
-    }).join("");
+    const checklist = typeof STUDIO_CHECKLIST !== "undefined" ? STUDIO_CHECKLIST : [];
+    const studio = $("#studio-checklist");
+    if (studio) {
+      studio.innerHTML = checklist.map(group => {
+        const cards = group.items.map(item => {
+          const linked = item.taskHint ? state.tasks.find(task => task.id === item.taskHint) : null;
+          const status = linked ? statusOf(linked.status).name : "清单项";
+          const progress = linked ? Number(linked.progress || 0) : 0;
+          const done = linked?.status === "done";
+          return `<article class="studio-card${done ? " done" : ""}">
+            <div class="studio-card-top"><strong>${esc(item.title)}</strong>${item.taskHint ? `<span class="task-id">${esc(item.taskHint)}</span>` : `<span class="task-id">备忘</span>`}</div>
+            <p>${esc(item.detail)}</p>
+            <div class="studio-card-foot"><span>${esc(status)}${linked ? ` · ${progress}%` : ""}</span>${linked ? `<button type="button" class="text-btn" data-task-id="${esc(linked.id)}">打开任务</button>` : `<button type="button" class="text-btn" data-view-link="guide">去写备忘</button>`}</div>
+          </article>`;
+        }).join("");
+        return `<section class="studio-group"><div class="panel-heading"><div><span class="section-kicker">CHECKLIST</span><h2>${esc(group.group)}</h2></div></div><div class="studio-grid">${cards}</div></section>`;
+      }).join("");
+    }
+
+    const road = $("#roadmap");
+    if (road) {
+      road.innerHTML = PHASES.map(phase => {
+        const tasks = state.tasks.filter(task => task.phase === phase.id);
+        const done = tasks.filter(task => task.status === "done").length;
+        return `<button class="phase-chip" data-phase-more="${phase.id}" title="${esc(phase.goal)}"><b>${phase.id}</b><span>${esc(phase.name)}</span><small>${done}/${tasks.length}</small></button>`;
+      }).join("");
+    }
   }
 
   function renderPitfalls() {

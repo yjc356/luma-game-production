@@ -38,7 +38,7 @@
         <span class="nav-label">工作空间</span>
         <button class="nav-item active" data-view="dashboard"><svg><use href="#i-grid"/></svg><span>开发总览</span></button>
         <button class="nav-item" data-view="tasks"><svg><use href="#i-board"/></svg><span>任务看板</span><b id="nav-task-count">0</b></button>
-        <button class="nav-item" data-view="roadmap"><svg><use href="#i-road"/></svg><span>开发路线</span></button>
+        <button class="nav-item" data-view="roadmap"><svg><use href="#i-road"/></svg><span>制作清单</span></button>
         <button class="nav-item" data-view="guide"><svg><use href="#i-book"/></svg><span>开发备忘</span></button>
       </nav>
       <div class="sidebar-project">
@@ -70,8 +70,8 @@
       <div class="content">
         <section id="view-dashboard" class="view active" aria-labelledby="dashboard-title">
           <div class="page-heading dashboard-heading">
-            <div><p class="eyebrow">GAME PRODUCTION CONSOLE</p><h1 id="dashboard-title">海岛能跑稳，再谈好看。</h1><p>按制作管线拆任务；帧率预算给 Chaos 与建设 Actor 留空，阶段是质量闸门。</p></div>
-            <div class="date-block"><span id="today-date"></span><small>UE5 小岛生存制作台</small></div>
+            <div><p class="eyebrow">GAME PRODUCTION CONSOLE</p><h1 id="dashboard-title">先让小岛好玩，再慢慢好看。</h1><p>按管线拆任务。你是美术也能直接建任务、记坑；帧率要给物理和建设物留空。</p></div>
+            <div class="date-block"><span id="today-date"></span><small>UE5 小岛生存 · 美术友好制作台</small></div>
           </div>
           <div id="dashboard-stats" class="stats-grid"></div>
           <section class="panel budget-panel">
@@ -85,19 +85,19 @@
             </section>
             <aside class="panel focus-panel">
               <div class="panel-heading"><div><span class="section-kicker">P0 GATES</span><h2>建议优先推进</h2></div></div>
-              <p class="panel-intro">先打通可玩与性能闸门，避免后期返工；开工前可看「开发备忘」里的坑。</p>
+              <p class="panel-intro">优先灰盒可玩与性能。开工前先翻「开发备忘」对应管线的坑。</p>
               <div id="focus-list" class="focus-list"></div>
             </aside>
           </div>
           <section class="panel sprint-panel">
-            <div class="panel-heading"><div><span class="section-kicker">PHASE GATES</span><h2>阶段质量闸门</h2></div><button class="text-btn" data-view-link="roadmap">完整路线<svg><use href="#i-arrow"/></svg></button></div>
-            <div id="mini-roadmap" class="mini-roadmap"></div>
+            <div class="panel-heading"><div><span class="section-kicker">ART → ENGINE</span><h2>本周制作焦点</h2></div><button class="text-btn" data-view-link="roadmap">完整清单<svg><use href="#i-arrow"/></svg></button></div>
+            <div id="mini-roadmap" class="mini-checklist"></div>
           </section>
         </section>
 
         <section id="view-tasks" class="view" aria-labelledby="tasks-title">
           <div class="page-heading compact-heading">
-            <div><p class="eyebrow">TASK MANAGEMENT</p><h1 id="tasks-title">任务看板</h1><p>点击卡片编辑详情，拖动卡片可更新状态。</p></div>
+            <div><p class="eyebrow">TASK MANAGEMENT</p><h1 id="tasks-title">任务看板</h1><p>点卡片改详情，拖到列改状态。小需求（例如低档点光改 4 面投影）直接「新建任务」选渲染管线即可。</p></div>
             <div class="view-toggle" role="group" aria-label="任务布局"><button class="active" data-layout="board" title="看板视图"><svg><use href="#i-board"/></svg></button><button data-layout="list" title="列表视图"><svg><use href="#i-list"/></svg></button></div>
           </div>
           <div class="task-toolbar">
@@ -110,17 +110,21 @@
         </section>
 
         <section id="view-roadmap" class="view" aria-labelledby="roadmap-title">
-          <div class="page-heading compact-heading"><div><p class="eyebrow">DEVELOPMENT ROADMAP</p><h1 id="roadmap-title">从原型到发布</h1><p>阶段是质量门槛，不是死板的日历；达标后再进入下一阶段。</p></div></div>
-          <div id="roadmap" class="roadmap"></div>
-          <div class="roadmap-note"><svg><use href="#i-info"/></svg><p><strong>关键原则：</strong>联机能力不要留到最后。先以权威服务器边界完成原型，再在 M2 用真实双端验证，能显著减少移动、战斗、物品与动画系统的返工。</p></div>
+          <div class="page-heading compact-heading"><div><p class="eyebrow">CONTENT · ART HANDOFF</p><h1 id="roadmap-title">制作清单</h1><p>给美术和 Agent 看的实操清单：交接检查、小岛内容、配套体验。阶段（M0–M5）只在任务筛选里用，不再铺成路线墙。</p></div></div>
+          <div id="studio-checklist" class="studio-checklist"></div>
+          <div class="roadmap-note"><svg><use href="#i-info"/></svg><p><strong>怎么用：</strong>灰盒路径先可玩，再贴皮量产。资产进引擎前过一遍交接项；踩坑写到「开发备忘」。任务仍可按阶段筛选，但这里不再背 M0–M5 长文。</p></div>
+          <details class="phase-drawer">
+            <summary>需要时再看阶段标签（M0–M5）</summary>
+            <div id="roadmap" class="phase-chip-row"></div>
+          </details>
         </section>
 
         <section id="view-guide" class="view" aria-labelledby="guide-title">
           <div class="page-heading compact-heading">
-            <div><p class="eyebrow">AGENT MEMORY · PIPELINE PITFALLS</p><h1 id="guide-title">管线开发备忘</h1><p>每次开发后把踩过的坑记在对应管线；下次开工前先读，避免反复改。</p></div>
+            <div><p class="eyebrow">AGENT MEMORY · PIPELINE PITFALLS</p><h1 id="guide-title">管线开发备忘</h1><p>每次改完把坑记在这里。你或 Agent 下次开工前先读对应管线，少走回头路。</p></div>
             <button class="primary-btn" id="add-pitfall-btn" type="button"><svg><use href="#i-plus"/></svg>记录新坑</button>
           </div>
-          <div class="guide-hero pitfalls-hero"><span>READ BEFORE YOU CODE</span><h2>备忘是制作记忆，不是流程口号。</h2><p>按管线归档：现象、原因、正确做法、相关任务编号。导出备份会一并带走；云端任务同步不受影响。</p></div>
+          <div class="guide-hero pitfalls-hero"><span>READ BEFORE YOU BUILD</span><h2>备忘 = 团队记忆。</h2><p>写清楚：看到什么怪现象、为什么、正确怎么做、相关任务号。导出备份会带走备忘；云端任务同步不受影响。</p></div>
           <div class="pitfalls-layout">
             <aside class="panel pitfalls-nav-panel">
               <div class="panel-heading"><div><span class="section-kicker">PIPELINES</span><h2>选择管线</h2></div></div>
@@ -156,7 +160,7 @@
             </div>
             <p class="field-hint">保存任务时会创建该管线，并写入本地；筛选与卡片会立即出现。</p>
           </div>
-          <label class="field"><span>开发阶段</span><select id="task-phase"></select></label>
+          <label class="field"><span>阶段标签</span><select id="task-phase"></select></label>
           <label class="field"><span>优先级</span><select id="task-priority"><option value="P0">P0 · 必须</option><option value="P1">P1 · 重要</option><option value="P2">P2 · 增强</option></select></label>
           <label class="field"><span>当前状态</span><select id="task-status"></select></label>
           <label class="field"><span>预估工作量（人日）</span><input id="task-estimate" type="number" min="0" max="999" step="0.5" value="1"></label>
