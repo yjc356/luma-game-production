@@ -1,6 +1,6 @@
 # LUMA 游戏开发控制台
 
-面向 UE5.8 游戏研发的五管线任务看板。无需构建工具：直接用浏览器打开 `index.html` 即可离线使用；连接 Supabase 后可部署为公网多人协作系统。
+面向 UE5.8 游戏研发的六大管线任务看板（渲染、物理、动画、特效、客户端、网络）。无需构建工具：直接用浏览器打开 `index.html` 即可离线使用；连接 Supabase 后可部署为公网多人协作系统。
 
 ## 模式
 
@@ -93,3 +93,9 @@ https://你的用户名.github.io/仓库名/
 - `config.js`：Supabase 公开连接配置
 - `supabase/schema.sql`：数据库、邀请函数与 RLS
 - `.github/workflows/deploy.yml`：GitHub Pages 自动部署
+
+## 任务数据与自定义需求
+
+- 默认任务定义在 `data.js` 的 `DEFAULT_TASKS`；看板 UI 可新增自定义任务（`custom: true`），本地与团队模式都会保留。
+- 小功能需求请直接上板，例如渲染项 **R-22「低画质点光 4 面投影」**：标题可测、可回退，并挂到 Scalability，不必另起长文档。
+- 海岛生存立项重点：三档帧率（High 144+ / Mid 2060@1080p 100+ / Low 60）、中档 SSGI、高档压缩 Lumen GI、Chaos 预算与建设期 Actor 变体管控。

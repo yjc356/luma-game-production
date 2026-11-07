@@ -301,7 +301,7 @@
 
     const focus = state.tasks
       .filter(task => task.status !== "done" && task.priority === "P0")
-      .sort((a, b) => PHASES.findIndex(phase => phase.id === a.phase) - PHASES.findIndex(phase => phase.id === b.phase) || ["client", "network", "render", "animation", "vfx"].indexOf(a.pipeline) - ["client", "network", "render", "animation", "vfx"].indexOf(b.pipeline) || a.id.localeCompare(b.id))
+      .sort((a, b) => PHASES.findIndex(phase => phase.id === a.phase) - PHASES.findIndex(phase => phase.id === b.phase) || ["client", "network", "render", "physics", "animation", "vfx"].indexOf(a.pipeline) - ["client", "network", "render", "physics", "animation", "vfx"].indexOf(b.pipeline) || a.id.localeCompare(b.id))
       .slice(0, 5);
     $("#focus-list").innerHTML = focus.length ? focus.map((task, index) => `<button class="focus-item" data-task-id="${esc(task.id)}"><span class="focus-index">${String(index + 1).padStart(2, "0")}</span><span><strong>${esc(task.title)}</strong><small>${esc(task.id)} · ${phaseOf(task.phase).id} ${phaseOf(task.phase).name} · ${pipelineOf(task).name}</small></span>${icon("chevron")}</button>`).join("") : `<div class="empty-mini">当前没有待推进的 P0 任务。<br>可以进入下一阶段，或新建一个目标。</div>`;
 
